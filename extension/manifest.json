@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "Доступно",
+  "short_name": "Доступно",
+  "version": "0.1.0",
+  "description": "Робить будь-який сайт зручнішим для людей зі скрінрідером або слабким зором.",
+  "default_locale": "uk",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "scripts": [
+      "src/background.js"
+    ]
+  },
+  "action": {
+    "default_title": "Доступно",
+    "default_popup": "popup/popup.html"
+  },
+  "commands": {
+    "toggle-site": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "Увімкнути або вимкнути Доступно на цьому сайті"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false,
+      "js": [
+        "src/core.js",
+        "src/fixers/lang.js",
+        "src/fixers/images.js",
+        "src/fixers/names.js",
+        "src/fixers/forms.js",
+        "src/fixers/contrast.js",
+        "src/fixers/focus.js",
+        "src/content.js"
+      ]
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "dostupno@example.org",
+      "strict_min_version": "121.0"
+    }
+  }
+}

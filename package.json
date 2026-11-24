@@ -1,0 +1,13 @@
+{
+  "name": "dostupno",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser extension that makes any website more accessible for screen reader and low-vision users. Ukrainian-first.",
+  "type": "module",
+  "scripts": {
+    "test": "node test/run-fixers.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

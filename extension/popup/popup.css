@@ -1,0 +1,148 @@
+/*
+ * The popup is used by people with low vision and screen reader users,
+ * so legibility beats everything: large type, real black on white,
+ * big targets, and a focus ring that can't be missed.
+ */
+:root {
+  --bg: #ffffff;
+  --text: #000000;
+  --muted: #3d3d3d;
+  --accent: #0046ad;
+  --accent-text: #ffffff;
+  --off: #5c1a00;
+  --off-bg: #fff1e8;
+  --line: #000000;
+  --focus: #ffd400;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --text: #ffffff;
+    --muted: #d6d6d6;
+    --accent: #8cbaff;
+    --accent-text: #000000;
+    --off: #ffcfb3;
+    --off-bg: #2a1206;
+    --line: #ffffff;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { font-size: 112.5%; } /* 18px base; respects the browser's own zoom */
+
+body {
+  margin: 0;
+  min-width: 22rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+  line-height: 1.45;
+}
+
+main {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 1.6rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.intro { margin: 0 0 1.25rem; font-size: 1.1rem; }
+
+/* The one bold element: the on/off control for this site. */
+.site-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  min-height: 5rem;
+  padding: 1rem 1.1rem;
+  border: 3px solid var(--accent);
+  border-radius: 0.75rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.site-toggle #site-state { font-size: 1.45rem; font-weight: 700; }
+.site-toggle .host { font-size: 1rem; overflow-wrap: anywhere; }
+
+.site-toggle[aria-checked="false"] {
+  background: var(--off-bg);
+  color: var(--off);
+  border-color: var(--off);
+  border-style: dashed;
+}
+
+.hint { margin: 0.6rem 0 0; color: var(--muted); font-size: 0.95rem; }
+.status { margin: 0.35rem 0 0; font-size: 0.95rem; }
+.status:empty { display: none; }
+
+kbd {
+  font: inherit;
+  font-weight: 700;
+  padding: 0 0.3em;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+}
+
+fieldset {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  border: 0;
+}
+legend {
+  padding: 0;
+  margin-bottom: 0.6rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.choice {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.85rem 0.9rem;
+  border: 2px solid var(--line);
+  border-radius: 0.6rem;
+  cursor: pointer;
+}
+.choice + .choice { margin-top: 0.6rem; }
+.choice:has(input:checked) { border-width: 4px; padding: 0.75rem 0.8rem; }
+
+.choice input {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin: 0.1rem 0 0;
+  accent-color: var(--accent);
+}
+.choice strong { display: block; font-size: 1.05rem; }
+.choice .detail { display: block; color: var(--muted); font-size: 0.95rem; }
+
+:focus-visible {
+  outline: 3px solid var(--line);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px var(--focus);
+}
+.choice:has(input:focus-visible) {
+  outline: 3px solid var(--line);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px var(--focus);
+}
+.choice input:focus-visible { outline: none; box-shadow: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .site-toggle { transition: background-color 120ms ease, color 120ms ease; }
+}

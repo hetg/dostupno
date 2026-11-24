@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Доступно</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1 id="title">Доступно</h1>
+    <p id="welcome-intro" class="intro" hidden>
+      Доступно виправляє сайти, щоб ними було легше користуватися. Оберіть, що вам допомагає. Це можна змінити будь-коли.
+    </p>
+
+    <section id="site-section">
+      <button id="site-toggle" type="button" role="switch" class="site-toggle" aria-checked="true" aria-describedby="site-hint">
+        <span id="site-state">Увімкнено</span>
+        <span id="site-host" class="host"></span>
+      </button>
+      <p id="site-hint" class="hint">Швидко перемкнути: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></p>
+      <p id="site-status" class="status" role="status"></p>
+    </section>
+
+    <form id="profiles">
+      <fieldset>
+        <legend>Що вам допомагає?</legend>
+        <label class="choice">
+          <input type="checkbox" name="screenreader">
+          <span>
+            <strong>Я користуюсь скрінрідером</strong>
+            <span class="detail">Підписи до кнопок, зображень і полів форм</span>
+          </span>
+        </label>
+        <label class="choice">
+          <input type="checkbox" name="lowvision">
+          <span>
+            <strong>Я погано бачу</strong>
+            <span class="detail">Чіткіший текст і помітна рамка фокусу</span>
+          </span>
+        </label>
+      </fieldset>
+    </form>
+
+    <p id="welcome-done" class="hint" hidden>
+      Готово. Доступно вже працює на всіх сайтах. Цю вкладку можна закрити.
+    </p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

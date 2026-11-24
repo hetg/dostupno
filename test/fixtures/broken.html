@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- Test page with common accessibility problems. No lang attribute on purpose. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Тестова сторінка з помилками доступності</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #fff; }
+    .pale { color: #b5b5b5; }
+    .dark-box { background: #1c1c1c; padding: 1rem; }
+    .dark-box p { color: #555; }
+    .big { font-size: 28px; color: #9a9a9a; }
+    *:focus { outline: none; }
+    .icon-search::before { content: "🔍"; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" id="logo-link"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'/%3E" width="120" height="40"></a>
+    <button class="btn icon-search"></button>
+    <button class="burger-menu"><span></span><span></span><span></span></button>
+    <a href="tel:+380441234567"><svg width="20" height="20"><circle cx="10" cy="10" r="8"/></svg></a>
+    <a href="https://facebook.com/example"><i class="fa fa-facebook"></i></a>
+    <button>×</button>
+  </header>
+
+  <main>
+    <h1>Новини громади</h1>
+    <p class="pale">Цей текст надто блідий, його важко прочитати людям зі слабким зором.</p>
+    <p class="big">Великий сірий заголовок-текст</p>
+    <div class="dark-box"><p>Темно-сірий текст на чорному тлі.</p></div>
+
+    <figure>
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'/%3E" width="400" height="300">
+      <figcaption>Відкриття нового укриття у школі №5</figcaption>
+    </figure>
+    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'/%3E" width="400" height="300" alt="IMG_2041.jpg">
+    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E" width="1" height="1">
+
+    <form action="/search" role="search">
+      <input type="text" name="q" placeholder="Пошук по сайту">
+      <button type="submit"><svg width="16" height="16"><use href="#icon-search"/></svg></button>
+    </form>
+
+    <form action="/subscribe">
+      Електронна пошта: <input type="email" name="email">
+      <input type="tel" name="phone">
+      <textarea></textarea>
+      <button type="submit">Підписатися</button>
+    </form>
+
+    <p>Цей абзац уже в порядку і не повинен змінитися.</p>
+    <button id="named" aria-label="Вже має назву"><svg width="16" height="16"></svg></button>
+  </main>
+
+  <div id="later"></div>
+  <script>
+    // Simulates a single-page app adding content after load.
+    setTimeout(() => {
+      document.getElementById('later').innerHTML =
+        '<button class="close-modal"></button><p class="pale">Пізніше доданий блідий текст</p>';
+    }, 800);
+  </script>
+</body>
+</html>
