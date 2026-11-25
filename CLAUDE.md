@@ -35,9 +35,14 @@ extension/
   icons/                 icon.svg (source) + PNGs rendered by `npm run icons`.
 backend/                 Not built yet. See backend/README.md for the planned API.
 test/fixtures/           Pages with known accessibility problems.
-test/run-fixers.mjs      Smoke test: injects content scripts into the fixture with Playwright.
+test/run-fixers.mjs      Smoke test: injects content scripts into the fixture; names checked via
+                         Chromium's accessibility tree (what screen readers get).
+test/e2e-extension.mjs   Loads the real unpacked extension in Chromium and checks it end to end.
 test/audit-sites.mjs     Real-site audit: records every change on the sites in test/sites.txt.
 scripts/make-icons.mjs   Renders extension/icons/icon.svg to 16/32/48/128 PNGs.
+eslint-rules/            Custom lint rule: fixers may change the DOM only via Dostupno.changes.
+openspec/                Specs (source of truth for behavior) and change proposals.
+.claude/                 Project settings, hooks, subagents, skills (see "Working with agents").
 ```
 
 ### Fixer contract
@@ -81,12 +86,20 @@ The backend (weekend 2) will fill these in. `revertAll()` removes these markers 
 - `focus` (lowvision): two-tone focus ring visible on any background.
 
 ## Commands
-- `npm install` then `npx playwright install chromium` (first time)
+- `npm ci` then `npx playwright install chromium` (first time; the SessionStart hook does this)
+- `npm run check`: everything CI runs (lint, smoke test, e2e, OpenSpec validation). Run before a PR.
 - `npm test`: smoke test against `test/fixtures/broken.html`
+- `npm run test:e2e`: real unpacked extension in Chromium (`SHOTS=1` saves a popup screenshot)
+- `npm run lint`: ESLint (incl. the reversibility rule for fixers) + `web-ext lint`.
+  Expected web-ext warnings: Firefox ignores `background.service_worker` (it uses `scripts`), and
+  `data_collection_permissions` is newer than `strict_min_version` 121 (older Firefox ignores it).
 - `npm run audit`: run all fixers on the real sites in `test/sites.txt`; writes
   `test/audit-report/<host>.json` (every change with context) and `summary.md`.
   `npm run audit -- https://site.ua/` for specific URLs; `SHOTS=1` adds before/after
-  pictures of contrast fixes. Run it after changing a fixer and review new changes for false positives.
+  pictures of contrast fixes.
+- `npm run audit -- --compare main`: runs `main`'s extension and the working tree on the SAME page
+  load and writes `test/audit-report/compare.md` with changes that are new or gone (plus anything
+  revert left behind). Use this after changing a fixer.
 - `npm run icons`: re-render the PNG icons after editing `extension/icons/icon.svg`
 - Load in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `extension/`
 - Load in Firefox: `about:debugging` → This Firefox → Load Temporary Add-on → `extension/manifest.json`
@@ -118,11 +131,30 @@ them. After upgrading the CLI (`npm install -g @fission-ai/openspec@latest`), ru
 Small fixes that don't change specified behavior (typos, refactors, test-only changes) can skip this.
 `openspec validate --strict` and `openspec list` check the state; `openspec view` shows a dashboard.
 
+## Working with agents
+- **Branches and PRs.** `main` is protected: work on a branch, open a PR, CI (`.github/workflows/ci.yml`)
+  must pass. The PR template has the principles checklist. Project permissions deny pushing to `main`.
+- **Hooks** (`.claude/settings.json`): after every edit to a `.js`/`.mjs` file the file is linted, and
+  edits under `extension/`, `test/fixtures/` or `test/run-fixers.mjs` also run `npm test`; failures
+  come back immediately, fix them before moving on. A SessionStart hook installs dependencies and
+  Chromium when missing (fresh clones, cloud sessions).
+- **Subagents** (`.claude/agents/`): `a11y-reviewer` reviews a diff against the principles and specs
+  without your reasoning; use it before opening a PR that changes behavior. `audit-triage` runs the
+  real-site audit and returns only suspicious changes; use it after changing a fixer instead of
+  reading audit JSON in the main conversation.
+- **Skill** `run-extension`: how to see the extension working (e2e, a specific site, screenshots).
+- **MCP**: `.mcp.json` adds a headless, isolated Playwright browser for looking at a site's markup and
+  accessibility tree interactively. It doesn't load the extension.
+- **Can't be automated**: listening with NVDA/VoiceOver. When a change affects what users hear,
+  say exactly what to listen for and leave it to a human.
+
 ## Roadmap
 See `docs/ROADMAP.md`.
 
 ## Known limitations
 - `accessibleName()` is a simplified accname algorithm, good for "has a name or not", not exact.
+  `npm test` checks it agrees with Chromium on the fixture's controls. Unlike Chromium it doesn't
+  count a placeholder as a name, on purpose: a placeholder alone gets a proper label.
 - Contrast fixer skips text over background images/gradients (can't know the real background).
 - Shadow DOM and iframes are not handled yet.
 - Chrome on Android has no extensions; mobile support means Firefox for Android and Safari on iOS.

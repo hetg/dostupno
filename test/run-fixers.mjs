@@ -37,10 +37,67 @@ const check = (name, ok, detail = '') => {
   if (!ok) failed++;
 };
 
+// Controls whose name we check. Names come from Chromium's accessibility tree,
+// i.e. what a screen reader is actually given, not from our own accessibleName().
+const NAMED = {
+  logo: '#logo-link',
+  search: '.icon-search',
+  burger: '.burger-menu',
+  tel: 'a[href^="tel:"]',
+  fb: 'a[href*="facebook"]',
+  close: 'header button:last-of-type',
+  searchSubmit: 'form[role=search] button',
+  qField: 'input[name=q]',
+  email: 'input[name=email]',
+  phone: 'input[name=phone]',
+  alreadyNamed: '#named',
+  exampleEmail: 'input[name=contact]',
+  examplePhone: 'input[name=mob]',
+  videoCard: '#video-card a.video-item',
+  photoCard: '#photo-card a',
+  ytVideo: '#yt-video',
+  closeSearch: '#close-search',
+  owlPrev: '#owl-prev',
+  lateButton: '.close-modal',
+  figureImg: 'figure img',
+};
+// Already named in the fixture on purpose; everything else must start unnamed.
+const NAMED_BY_SITE = new Set(['alreadyNamed', 'owlPrev']);
+
 const browser = await chromium.launch();
 const page = await browser.newPage();
 const fixture = 'file://' + path.join(root, 'test/fixtures/broken.html');
 await page.goto(fixture);
+
+const cdp = await page.context().newCDPSession(page);
+await cdp.send('DOM.enable');
+await cdp.send('Accessibility.enable');
+/** Accessible name as computed by Chromium (null if the element doesn't exist). */
+const axName = async (selector) => {
+  const { root: doc } = await cdp.send('DOM.getDocument', { depth: 0 });
+  const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: doc.nodeId, selector });
+  if (!nodeId) return null;
+  const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+  return (nodes[0]?.name?.value ?? '').trim();
+};
+const axNames = async () => {
+  const out = {};
+  for (const [key, sel] of Object.entries(NAMED)) out[key] = await axName(sel);
+  return out;
+};
+
+// The fixture must really be broken, or the checks below prove nothing. Chromium falls
+// back to the placeholder or a lone symbol ("🔍", "×"); neither is a meaningful name.
+const before = await axNames();
+const placeholders = await page.evaluate((named) => {
+  const out = {};
+  for (const [key, sel] of Object.entries(named)) out[key] = document.querySelector(sel)?.getAttribute('placeholder') ?? null;
+  return out;
+}, NAMED);
+const meaningful = (k, v) => v && /[\p{L}\p{N}]/u.test(v) && v !== placeholders[k];
+const namedTooEarly = Object.entries(before).filter(([k, v]) => meaningful(k, v) && !NAMED_BY_SITE.has(k) && k !== 'figureImg');
+check('fixture: controls start without a meaningful name (per Chromium)', namedTooEarly.length === 0, JSON.stringify(namedTooEarly));
+
 await page.addScriptTag({ content: chromeShim });
 for (const s of scripts) await page.addScriptTag({ content: s });
 await page.waitForTimeout(1500); // let the delayed content appear and get fixed
@@ -57,38 +114,18 @@ await page.evaluate(() => scrollTo(0, 0));
 const r = await page.evaluate(() => {
   const D = window.Dostupno;
   const q = (s) => document.querySelector(s);
-  const name = (s) => D.accessibleName(q(s));
   const color = (s) => getComputedStyle(q(s)).color;
   return {
     lang: document.documentElement.lang,
-    logo: name('#logo-link'),
-    search: name('.icon-search'),
-    burger: name('.burger-menu'),
-    tel: name('a[href^="tel:"]'),
-    fb: name('a[href*="facebook"]'),
-    close: name('header button:last-of-type'),
-    searchSubmit: name('form[role=search] button'),
-    qField: name('input[name=q]'),
-    email: name('input[name=email]'),
-    phone: name('input[name=phone]'),
     figure: q('figure img').getAttribute('alt'),
     filenameImg: q('img[alt="IMG_2041.jpg"]')?.getAttribute('data-dostupno-needs-ai'),
     pixel: q('img[width="1"]').getAttribute('alt'),
-    alreadyNamed: name('#named'),
-    exampleEmail: name('input[name=contact]'),
-    examplePhone: name('input[name=mob]'),
-    videoCard: name('#video-card a.video-item'),
-    photoCard: name('#photo-card a'),
-    ytVideo: name('#yt-video'),
-    closeSearch: name('#close-search'),
-    owlPrev: name('#owl-prev'),
     paleRatio: D.contrastRatio(
       ...[color('.pale'), 'rgb(255,255,255)'].map((c) => { const m = c.match(/\d+/g).map(Number); return { r: m[0], g: m[1], b: m[2] }; })
     ),
     darkBoxRatio: D.contrastRatio(
       ...[color('.dark-box p'), 'rgb(28,28,28)'].map((c) => { const m = c.match(/\d+/g).map(Number); return { r: m[0], g: m[1], b: m[2] }; })
     ),
-    lateButton: name('.close-modal'),
     latePale: color('#later .pale'),
     focusStyle: !!document.getElementById('dostupno-focus'),
     greenText: color('.green-btn'),
@@ -105,6 +142,20 @@ const r = await page.evaluate(() => {
   };
 });
 
+// What screen readers get, from Chromium's accessibility tree.
+Object.assign(r, await axNames());
+// Our simplified accessibleName() decides what's "missing"; it must agree with the browser.
+const ours = await page.evaluate((named) => {
+  const out = {};
+  for (const [key, sel] of Object.entries(named)) {
+    const el = document.querySelector(sel);
+    if (el) out[key] = window.Dostupno.accessibleName(el);
+  }
+  return out;
+}, NAMED);
+const disagree = Object.keys(ours).filter((k) => k !== 'figureImg' && ours[k] !== r[k]).map((k) => `${k}: ours "${ours[k]}" vs Chromium "${r[k]}"`);
+check('accessibleName() agrees with Chromium on every checked control', disagree.length === 0, disagree.join('; '));
+
 check('lang detected as uk', r.lang === 'uk', r.lang);
 check('logo link named', r.logo === 'Головна сторінка', r.logo);
 check('search icon button named', r.search === 'Пошук', r.search);
@@ -116,6 +167,7 @@ check('search submit named', r.searchSubmit === 'Шукати', r.searchSubmit);
 check('search field labeled from placeholder', r.qField === 'Пошук по сайту', r.qField);
 check('email labeled from nearby text', r.email === 'Електронна пошта', r.email);
 check('phone labeled from name', r.phone === 'Телефон', r.phone);
+check('figure image exposed with its caption as name', r.figureImg === 'Відкриття нового укриття у школі №5', r.figureImg);
 check('figure image uses caption', r.figure === 'Відкриття нового укриття у школі №5', r.figure);
 check('filename alt flagged for AI', r.filenameImg === 'alt', r.filenameImg);
 check('1px image marked decorative', r.pixel === '', r.pixel);

@@ -12,7 +12,10 @@ Install once, choose what helps you, and every site gets better automatically. U
 ```bash
 npm install
 npx playwright install chromium
+npm run check     # lint + smoke test + real-extension e2e + spec validation (same as CI)
 npm test          # smoke test on test/fixtures/broken.html
 npm run audit     # run the fixers on real Ukrainian sites, report every change
+npm run audit -- --compare main   # what your branch changes on those sites
 ```
+Work on a branch and open a PR; CI must pass before merging to `main`.
 See `CLAUDE.md` for architecture and principles, and `docs/ROADMAP.md` for the plan.

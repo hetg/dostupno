@@ -4,3 +4,4 @@ node_modules/
 .env
 .idea/
 test/audit-report/
+test/e2e-report/

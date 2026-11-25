@@ -17,6 +17,7 @@
 - [ ] Shared cache keyed by image URL hash / site + selector, so repeat visits are instant and cheap
 - [ ] Extension: send only elements in or near the viewport; batch requests
 - [ ] Privacy: built-in exclusion list (banks, Diia, mail, medical), user exclusions, no full-page uploads
+- [ ] Update `data_collection_permissions` in manifest.json (now `none`) once image URLs are sent to the backend
 - [ ] Rate limiting per install
 
 ## Weekend 3 — trust and control
