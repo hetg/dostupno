@@ -38,38 +38,23 @@ chrome.commands.onCommand.addListener(async (command) => {
 
 // ---------------------------------------------------------------------------
 // Toolbar icon: on (yellow "Д" on navy) or off (grey, crossed out) per tab.
-// The content script reports its state (push); after each page load we also
-// ask it (pull), which covers back/forward cache and in-page navigations.
-// Tabs without a content script (browser pages, opened before install) get
-// the manifest default. Per-tab only, so a failure can't mark every tab "off".
+// Pages report their state: early-state.js at document_start, content.js when
+// it (de)activates, after a back/forward-cache restore and after prerender
+// activation. The browser resets per-tab icons on every navigation, so pages
+// without a content script (browser pages, opened before install) show the
+// manifest default. Per-tab only, so a failure can't mark every tab "off".
 // ---------------------------------------------------------------------------
 const ICON_ON = { 16: '/icons/icon-16.png', 32: '/icons/icon-32.png' };
 const ICON_OFF = { 16: '/icons/icon-off-16.png', 32: '/icons/icon-off-32.png' };
-const TITLE = {
-  on: 'Доступно: увімкнено на цьому сайті',
-  off: 'Доступно: вимкнено на цьому сайті',
-  unknown: 'Доступно',
-};
-
-/** state: 'on' | 'off' | 'unknown'. Errors (tab closed meanwhile) are ignored. */
-const showState = (tabId, state) => {
-  const path = state === 'off' ? ICON_OFF : ICON_ON;
-  Promise.all([
-    chrome.action.setIcon({ tabId, path }),
-    chrome.action.setTitle({ tabId, title: TITLE[state] }),
-  ]).catch(() => {});
-};
+const TITLE_ON = 'Доступно: увімкнено на цьому сайті';
+const TITLE_OFF = 'Доступно: вимкнено на цьому сайті';
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type !== 'dostupno:state' || sender.tab?.id === undefined) return;
-  if (sender.frameId) return; // only the top frame speaks for the tab
-  showState(sender.tab.id, msg.active ? 'on' : 'off');
-});
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status !== 'complete') return;
-  chrome.tabs
-    .sendMessage(tabId, { type: 'dostupno:status' })
-    .then((status) => showState(tabId, status ? (status.active ? 'on' : 'off') : 'unknown'))
-    .catch(() => showState(tabId, 'unknown')); // no content script in this tab
+  const tabId = sender.tab.id;
+  // Errors (tab closed meanwhile) don't matter.
+  Promise.all([
+    chrome.action.setIcon({ tabId, path: msg.active ? ICON_ON : ICON_OFF }),
+    chrome.action.setTitle({ tabId, title: msg.active ? TITLE_ON : TITLE_OFF }),
+  ]).catch(() => {});
 });

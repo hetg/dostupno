@@ -25,6 +25,19 @@ const check = (name, ok, detail = '') => {
 };
 
 const server = createServer((req, res) => {
+  // A page that stays loading for 3 s (blocking script), to check the icon during load.
+  if (req.url === '/slow.js') {
+    setTimeout(() => {
+      res.writeHead(200, { 'content-type': 'text/javascript' });
+      res.end('');
+    }, 3000);
+    return;
+  }
+  if (req.url === '/slow.html') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end('<!doctype html><html lang="uk"><title>Повільна</title><p>Завантаження…</p><script src="/slow.js"></script>');
+    return;
+  }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(fixture);
 });
@@ -108,6 +121,12 @@ try {
   await page2.goto('about:blank');
   await page2.waitForTimeout(500);
   check('toolbar: navigating away from an off site resets the tooltip', (await titleOf(page2)) === 'Доступно', await titleOf(page2));
+  // While a page of an off site is still loading, the icon already says off.
+  await page2.goto(url.replace('/broken.html', '/slow.html'), { waitUntil: 'commit' });
+  await page2.waitForTimeout(800);
+  const loading = await page2.evaluate(() => document.readyState);
+  check('toolbar: shows off while an off site is still loading', loading === 'loading' && (await titleOf(page2)) === OFF, `${loading}: ${await titleOf(page2)}`);
+  await page2.waitForLoadState('load');
   // Same server under another hostname = a different site, where Доступно is on.
   await page2.goto(url.replace('127.0.0.1', 'localhost'));
   await page2.waitForTimeout(1000);

@@ -42,8 +42,9 @@ None.
 ## Impact
 
 - `extension/icons/`: new `icon-off.svg` source and `icon-off-16.png` / `icon-off-32.png`, rendered by `npm run icons`.
-- `extension/src/content.js`: reports "on" / "off" to the background when it activates or deactivates.
-- `extension/src/background.js`: sets the tab's icon and tooltip from those reports, and resets them when a tab starts loading a new page.
+- `extension/src/early-state.js` (new, runs at `document_start`): reports "on" / "off" as soon as a page starts loading.
+- `extension/src/content.js`: reports again when it activates or deactivates, after a back/forward-cache restore, and after a prerendered page is shown.
+- `extension/src/background.js`: sets the tab's icon and tooltip from those reports. The browser itself resets per-tab icons on navigation.
 - `scripts/make-icons.mjs`: renders the off icon too.
 - Tests: `test/e2e-extension.mjs` checks the icon and tooltip state in the real extension.
 - No new permissions or dependencies.

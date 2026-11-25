@@ -15,11 +15,18 @@ The action icon is set once in `manifest.json` (`action.default_icon`) and never
 
 ## Decisions
 
-### 1. The tab reports its own state (push), the background confirms after loads (pull)
-- **Push**: the content script sends `{ type: 'dostupno:state', active }` to the background in `apply()` on start and whenever the running state changes (site toggled, global `enabled` changed). The background sets the icon and title for `sender.tab.id`.
-- **Pull**: on `tabs.onUpdated` with `changeInfo.status === 'complete'`, the background sends the existing `dostupno:status` message to that tab and sets the icon from the reply. If there's no reply (browser page, page opened before install, content script not injected yet), it sets the default icon and the tooltip "Доступно". `changeInfo.status` is available without the `tabs` permission.
-- The pull covers cases the push misses: back/forward-cache restores and same-document navigations, where the content script doesn't run again, and a stale off icon after navigating to another site. When the content script loads after the `complete` event, its own push corrects the default icon.
-- **Alternative considered**: read `tab.url` in the background and compare the host with `disabledSites`. Rejected: it needs the `tabs` permission or host permissions (a new install warning). It also reports "on" for pages where the content script isn't actually running.
+### 1. Pages report their own state; the browser resets icons on navigation
+The page sends `{ type: 'dostupno:state', active }` and the background sets the icon and title for `sender.tab.id`. There are four reports:
+- **Early:** `src/early-state.js`, a separate content script at `document_start`, reads `enabled` and `disabledSites` and reports right away. A disabled site therefore shows "off" while the page is still loading, not only at `document_idle` (which can be seconds on heavy pages). It touches nothing on the page.
+- **Settled:** `content.js` reports in `apply()` and whenever its running state changes (site toggled, global `enabled` changed).
+- **Back/forward cache:** `content.js` reports again on `pageshow` with `persisted`. The browser reset the icon on that navigation, but the content scripts don't run again.
+- **Prerender:** nothing is reported while `document.prerendering`. `content.js` reports on `prerenderingchange`, when the page is shown.
+
+Chromium resets tab-specific action icons and titles on every cross-document navigation. We verified this: the e2e navigation checks pass with no reset code in the background. So pages without a content script (browser pages, opened before install) show the manifest default without any help.
+
+**Alternatives considered:**
+- **Pull after each load** (`tabs.onUpdated` `complete` → ask the tab): this was the first implementation. Review found a race: the tab could answer "off" before it had read storage, flashing the grey icon on sites that are on. It also woke the background on every tab update in the browser. Dropped once the navigation reset was confirmed.
+- **Read `tab.url` in the background and compare with `disabledSites`:** needs the `tabs` permission or host permissions (a new install warning), and reports "on" for pages where the content script isn't actually running.
 
 ### 2. Per-tab icon and title, never the global default
 `chrome.action.setIcon({ tabId, path })` and `chrome.action.setTitle({ tabId, title })` only. The manifest default (the on icon, tooltip "Доступно") stays the fallback, so an extension restart or a failed message can never leave every tab showing "off".
@@ -46,6 +53,8 @@ One message per page load (push), one per `complete` event (pull), and one per t
 ## Risks / Trade-offs
 
 - [Icon shows "on" (default) on a page opened before install, where Доступно isn't running] → Accepted: the popup already tells the user to reload ("Оновіть сторінку, щоб Доступно почав працювати."). A third "inactive" icon would add a state users must learn for a rare case.
-- [A short flicker to the default icon when a disabled site finishes loading before the content script reports] → The pull happens at `complete`, and the content script runs at `document_idle` right after. Any flicker lasts a fraction of a second and only on disabled sites.
+- [Default ("on"-looking) icon on a disabled site between the navigation and the early report] → Only the time it takes `document_start` to read synced storage, usually milliseconds. The e2e checks "off" on a page held loading for 3 s.
+- [Back/forward cache and prerender can't be tested in automation (Playwright's Chromium may disable the cache)] → Both are on the manual checklist.
+- [The test and audit harnesses inject only `content_scripts[0]`] → `early-state.js` is a second entry, so they're unaffected. It only matters in the real extension, which the e2e loads.
 - [Firefox differences in `action.setIcon` with `tabId`] → Supported in Firefox MV3 (121+). Verify by hand in Firefox, since automated e2e runs only in Chromium.
 - [A grey icon could look "disabled by the browser"] → The slash and the tooltip text make it read as "Доступно is off here", which is the intent.

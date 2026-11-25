@@ -96,6 +96,7 @@
    * the page must not notice.
    */
   const reportState = () => {
+    if (document.prerendering) return; // not shown yet: report on activation
     try {
       const sent = chrome.runtime.sendMessage({ type: 'dostupno:state', active });
       if (sent && typeof sent.catch === 'function') sent.catch(() => {});
@@ -111,6 +112,11 @@
     } else deactivate();
     reportState();
   };
+
+  // The browser resets the tab's icon on navigation; these pages come back
+  // without this script running again, so report again ourselves.
+  addEventListener('pageshow', (e) => e.persisted && reportState()); // back/forward cache
+  if (document.prerendering) document.addEventListener('prerenderingchange', reportState, { once: true });
 
   chrome.storage.sync.get(DEFAULTS, (stored) => {
     settings = { ...DEFAULTS, ...stored };

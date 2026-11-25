@@ -54,6 +54,16 @@
         "src/fixers/focus.js",
         "src/content.js"
       ]
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_start",
+      "all_frames": false,
+      "js": [
+        "src/early-state.js"
+      ]
     }
   ],
   "browser_specific_settings": {
@@ -61,7 +71,9 @@
       "id": "dostupno@example.org",
       "strict_min_version": "121.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": [
+          "none"
+        ]
       }
     }
   }
