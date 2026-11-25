@@ -1,0 +1,33 @@
+name: Неправильний підпис / Wrong label
+description: Доступно дав кнопці, полю чи зображенню неправильну назву або змінив сайт на гірше.
+labels: [false-positive]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Сторінка (URL)
+      description: Тільки публічні сторінки. Не додавайте посилання на банк, пошту, Дію чи медичні сервіси.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Що сталося?
+      description: Що прочитав скрінрідер або що змінилося на екрані?
+      placeholder: Кнопку «Закрити пошук» скрінрідер читає як «Пошук».
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Як має бути?
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Профіль
+      options: [Скрінрідер, Слабкий зір, Обидва]
+  - type: input
+    id: setup
+    attributes:
+      label: Браузер і скрінрідер
+      placeholder: Chrome 131 + NVDA 2025.3

@@ -6,39 +6,71 @@
  * Run:   npm run audit                      (all sites in test/sites.txt)
  *        npm run audit -- https://example.ua (specific URLs)
  *        SHOTS=1 npm run audit -- …         (also before/after pictures of contrast fixes)
+ *        npm run audit -- --compare main     (what changed vs. a git ref, see below)
  * Output: test/audit-report/<host>.json, <host>.png (with SHOTS) and summary.md
+ *
+ * --compare <ref>: on each page, runs the extension as it is at <ref>, records,
+ * turns it off (which also exercises revert on real sites), then runs the working
+ * tree on the SAME page load. Writes test/audit-report/compare.md listing changes
+ * that are new or gone. Same page load means news churn doesn't show up as noise.
  *
  * Nothing is sent anywhere except normal page loads; no AI calls.
  */
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const manifest = JSON.parse(readFileSync(path.join(root, 'extension/manifest.json'), 'utf8'));
-const [coreFile, ...rest] = manifest.content_scripts[0].js;
-const read = (f) => readFileSync(path.join(root, 'extension', f), 'utf8');
-const core = read(coreFile);
-const others = rest.map(read);
+
+/** Content scripts of the extension, from the working tree or from a git ref. */
+const loadVersion = (ref) => {
+  const read = (f) =>
+    ref
+      ? execFileSync('git', ['show', `${ref}:extension/${f}`], { cwd: root, encoding: 'utf8' })
+      : readFileSync(path.join(root, 'extension', f), 'utf8');
+  const manifest = JSON.parse(read('manifest.json'));
+  const [coreFile, ...rest] = manifest.content_scripts[0].js;
+  return { label: ref || 'working tree', core: read(coreFile), others: rest.map(read) };
+};
+
+const args = process.argv.slice(2);
+const compareIdx = args.indexOf('--compare');
+const compareRef = compareIdx >= 0 ? args[compareIdx + 1] : null;
+if (compareIdx >= 0) {
+  if (!compareRef) throw new Error('--compare needs a git ref, e.g. --compare main');
+  args.splice(compareIdx, 2);
+}
+const current = loadVersion(null);
+const baseline = compareRef ? loadVersion(compareRef) : null;
 
 const outDir = path.join(root, 'test/audit-report');
 mkdirSync(outDir, { recursive: true });
 
-const urls = process.argv.slice(2).length
-  ? process.argv.slice(2)
+const urls = args.length
+  ? args
   : readFileSync(path.join(root, 'test/sites.txt'), 'utf8')
       .split('\n')
       .map((l) => l.replace(/#.*/, '').trim())
       .filter(Boolean);
 
+// Fake chrome.storage with working change events, so the extension's own
+// on/off path can revert a version before the next one runs.
 const chromeShim = `
+  window.__store = { enabled: true, profiles: { screenreader: true, lowvision: true }, disabledSites: [] };
+  window.__listeners = [];
   window.chrome = {
     storage: {
-      sync: { get: (d, cb) => cb({ ...d, enabled: true, profiles: { screenreader: true, lowvision: true }, disabledSites: [] }) },
-      onChanged: { addListener: () => {} },
+      sync: { get: (d, cb) => cb({ ...d, ...window.__store }) },
+      onChanged: { addListener: (fn) => window.__listeners.push(fn) },
     },
     runtime: { onMessage: { addListener: () => {} } },
+  };
+  window.__turnOff = () => {
+    const disabledSites = [location.hostname];
+    window.__store.disabledSites = disabledSites;
+    window.__listeners.forEach((fn) => fn({ disabledSites: { newValue: disabledSites } }, 'sync'));
   };
 `;
 
@@ -147,6 +179,66 @@ async function beforeAfter(page, file) {
   await sheet.close();
 }
 
+/** Run one version of the extension on the open page and return what it changed. */
+async function runVersion(page, version) {
+  await page.evaluate(() => {
+    delete window.Dostupno;
+    delete window.__audit;
+    scrollTo(0, 0);
+  });
+  await page.addScriptTag({ content: chromeShim });
+  await page.addScriptTag({ content: version.core });
+  await page.addScriptTag({ content: recorder });
+  for (const s of version.others) await page.addScriptTag({ content: s });
+  // Read the page like a user: scroll down a few screens (lazy content ->
+  // MutationObserver path; contrast only checks text that is on screen).
+  for (let i = 0; i < 8; i++) {
+    await page.mouse.wheel(0, 800);
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(1000);
+  const audit = await page.evaluate(() => window.__audit);
+  if (!audit) throw new Error('page navigated away during the audit');
+  audit.ai = await page.evaluate(collectAi);
+  audit.lang = await page.evaluate(() => document.documentElement.getAttribute('lang'));
+  return audit;
+}
+
+/** Turn the extension off through its own settings path and check the page is clean. */
+async function turnOff(page) {
+  await page.evaluate(() => window.__turnOff());
+  await page.waitForTimeout(500);
+  return page.evaluate(() => ({
+    left: document.querySelectorAll('[data-dostupno], [data-dostupno-style], [data-dostupno-needs-ai]').length,
+    changes: window.Dostupno.changes.count(),
+  }));
+}
+
+/** Identity of a change, stable across versions on the same page load. */
+const changeKey = (c) => {
+  const html = (c.html || '').replace(/ data-dostupno[\w-]*(="[^"]*")?/g, '').slice(0, 160);
+  return c.kind === 'style'
+    ? `${c.fixer}|${c.name}=${c.value}|${c.tag}|${c.text}`
+    : `${c.fixer}|${c.name}=${c.value}|${html}`;
+};
+const describe = (c) =>
+  c.kind === 'style'
+    ? `[${c.fixer}] ${c.name}: ${c.old} → ${c.value} on "${(c.text || '').slice(0, 60)}"`
+    : `[${c.fixer}] ${c.name}="${String(c.value).slice(0, 80)}" (was ${JSON.stringify(c.old)}) on ${(c.html || '').slice(0, 140)}`;
+
+/** Changes in `b` that aren't in `a`, counting duplicates. */
+const minus = (a, b) => {
+  const counts = new Map();
+  for (const c of a) counts.set(changeKey(c), (counts.get(changeKey(c)) || 0) + 1);
+  return b.filter((c) => {
+    const k = changeKey(c), n = counts.get(k) || 0;
+    if (n) counts.set(k, n - 1);
+    return !n;
+  });
+};
+
+const compareLines = baseline ? [`# Audit compare: ${baseline.label} → working tree`, ''] : null;
+
 const browser = await chromium.launch();
 const context = await browser.newContext({
   locale: 'uk-UA',
@@ -167,21 +259,25 @@ for (const url of urls) {
     const title = await page.title();
     if ((response && response.status() >= 400) || /access denied|forbidden|just a moment|attention required/i.test(title))
       throw new Error(`blocked (${response?.status()} "${title}")`);
-    await page.addScriptTag({ content: chromeShim });
-    await page.addScriptTag({ content: core });
-    await page.addScriptTag({ content: recorder });
-    for (const s of others) await page.addScriptTag({ content: s });
-    // Read the page like a user: scroll down a few screens (lazy content ->
-    // MutationObserver path; contrast only checks text that is on screen).
-    for (let i = 0; i < 8; i++) {
-      await page.mouse.wheel(0, 800);
-      await page.waitForTimeout(400);
+    let audit;
+    if (baseline) {
+      const before = await runVersion(page, baseline);
+      const clean = await turnOff(page);
+      row.revertLeftovers = clean.left;
+      row.baseline = before.changes.length;
+      const after = (audit = await runVersion(page, current));
+      const added = minus(before.changes, after.changes);
+      const removed = minus(after.changes, before.changes);
+      Object.assign(row, { added: added.length, removed: removed.length });
+      compareLines.push(`## ${host}: ${before.changes.length} → ${after.changes.length} changes (+${added.length} / −${removed.length})`);
+      if (clean.left) compareLines.push(`**Revert left ${clean.left} marked element(s) behind on ${baseline.label}.**`);
+      for (const c of added) compareLines.push(`- + ${describe(c)}`);
+      for (const c of removed) compareLines.push(`- − ${describe(c)}`);
+      compareLines.push('');
+      writeFileSync(path.join(outDir, host + '.baseline.json'), JSON.stringify({ url, ref: baseline.label, ...before }, null, 2));
+    } else {
+      audit = await runVersion(page, current);
     }
-    await page.waitForTimeout(1000);
-    const audit = await page.evaluate(() => window.__audit);
-    if (!audit) throw new Error('page navigated away during the audit');
-    audit.ai = await page.evaluate(collectAi);
-    audit.lang = await page.evaluate(() => document.documentElement.getAttribute('lang'));
     writeFileSync(path.join(outDir, host + '.json'), JSON.stringify({ url, ...audit }, null, 2));
     if (process.env.SHOTS) await beforeAfter(page, path.join(outDir, host + '.png'));
 
@@ -220,3 +316,14 @@ for (const r of summary) {
 }
 writeFileSync(path.join(outDir, 'summary.md'), lines.join('\n') + '\n');
 console.log('\n' + lines.join('\n'));
+
+if (compareLines) {
+  const table = ['| site | ' + baseline.label + ' | working tree | new | gone | revert leftovers |', '|---|---|---|---|---|---|'];
+  for (const r of summary) {
+    if (r.error) table.push(`| ${r.host} | | | | | ${r.error} |`);
+    else table.push(`| ${r.host} | ${r.baseline} | ${r.changes} | ${r.added} | ${r.removed} | ${r.revertLeftovers} |`);
+  }
+  compareLines.splice(2, 0, ...table, '');
+  writeFileSync(path.join(outDir, 'compare.md'), compareLines.join('\n') + '\n');
+  console.log('\n' + table.join('\n') + '\n\nDetails: test/audit-report/compare.md');
+}
