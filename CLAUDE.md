@@ -29,10 +29,17 @@ extension/
   manifest.json          MV3. Content scripts are plain scripts (not modules), loaded in order.
   src/core.js            window.Dostupno namespace: change log + revert, accessibleName(), helpers.
   src/fixers/*.js        One file per problem. Each calls Dostupno.registerFixer({ id, profiles, run(root, ctx) }).
-  src/content.js         Loads settings, runs fixers, watches DOM changes, reverts on toggle off.
-  src/background.js      Keyboard shortcut (Alt+Shift+D) toggles the current site; opens welcome page on install.
+  src/content.js         Loads settings, runs fixers, watches DOM changes, reverts on toggle off;
+                         reports on/off to the background (`dostupno:state`) for the toolbar icon, also after
+                         back/forward-cache restores and prerender activation.
+  src/early-state.js     document_start content script (2nd manifest entry): reports on/off for the toolbar
+                         icon while the page loads. Touches nothing. Test/audit harnesses don't inject it.
+  src/background.js      Keyboard shortcut (Alt+Shift+D) toggles the current site; opens welcome page on install;
+                         sets each tab's toolbar icon + tooltip from the pages' reports (the browser resets
+                         them to the default on navigation, which covers pages where Доступно can't run).
   popup/                 Popup + welcome page (same file, ?welcome=1).
-  icons/                 icon.svg (source) + PNGs rendered by `npm run icons`.
+  icons/                 icon.svg (on) and icon-off.svg (off on this site: grey, crossed out) + PNGs
+                         rendered by `npm run icons`.
 backend/                 Not built yet. See backend/README.md for the planned API.
 test/fixtures/           Pages with known accessibility problems.
 test/run-fixers.mjs      Smoke test: injects content scripts into the fixture; names checked via
