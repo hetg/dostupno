@@ -98,6 +98,26 @@ The backend (weekend 2) will fill these in. `revertAll()` removes these markers 
   When a real-site audit finds a false positive, add it to the fixture as a "must stay untouched" check.
 - Test real changes with a screen reader (NVDA is free on Windows; VoiceOver on Mac) before calling them done.
 
+## Changes go through OpenSpec
+Behavior is specified in `openspec/specs/<capability>/spec.md` (page-safety, activation,
+page-language, image-alt, control-names, form-labels, text-contrast, focus-visibility, extension-ui).
+Those specs are the source of truth for what the extension does; project context and
+per-artifact rules live in `openspec/config.yaml`.
+
+For any change in behavior (OpenSpec 2.x skills; ask in plain words like "openspec propose …" or
+use the slash command):
+1. `/openspec-propose <idea>` creates `openspec/changes/<name>/` with proposal, delta specs, design, tasks.
+   Use `/openspec-explore` first when the idea is still fuzzy; `/openspec` when unsure what's next.
+2. Review and edit the artifacts (`/openspec-update-change`), then `/openspec-apply-change` to implement.
+3. `/openspec-archive-change` when done: merges the delta specs into `openspec/specs/` and moves
+   the change to `openspec/changes/archive/`.
+
+Skills live in `.agents/skills/` (shared with other AI tools); `.claude/skills/` holds symlinks to
+them. After upgrading the CLI (`npm install -g @fission-ai/openspec@latest`), run `openspec update`.
+
+Small fixes that don't change specified behavior (typos, refactors, test-only changes) can skip this.
+`openspec validate --strict` and `openspec list` check the state; `openspec view` shows a dashboard.
+
 ## Roadmap
 See `docs/ROADMAP.md`.
 

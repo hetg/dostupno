@@ -1,0 +1,51 @@
+schema: spec-driven
+
+# Shown to the AI when creating proposals, specs, designs and tasks.
+context: |
+  Доступно is a browser extension (MV3, Chrome + Firefox) that automatically makes any website
+  more usable for people with disabilities: screen reader users (NVDA, JAWS, TalkBack, VoiceOver)
+  and people with low vision. Users are not developers. Ukrainian-first: all user-facing text is
+  Ukrainian; code, comments, specs and commit messages are English.
+
+  Tech: plain JavaScript, no build step. Content scripts are classic scripts sharing the global
+  window.Dostupno namespace (extension/src/core.js). Each problem is one fixer file in
+  extension/src/fixers/ registered with Dostupno.registerFixer({ id, profiles, run, stop? }).
+  Tests: Playwright smoke test (npm test, fixture test/fixtures/broken.html) and a real-site audit
+  (npm run audit over test/sites.txt) that records every change for false-positive review.
+  A backend for AI alt text and names is planned (weekend 2) but not built.
+
+  Non-negotiable principles (see CLAUDE.md):
+  1. Never make a page worse. When unsure, do nothing. A wrong label is worse than none.
+  2. Never override what the site already did right; only fill in what's missing or broken.
+  3. Everything is reversible: all DOM changes go through Dostupno.changes so revertAll() undoes them.
+  4. Silent by default: no announcements except on/off toggles.
+  5. The extension's own UI is fully accessible (keyboard, screen reader, high contrast, 200% zoom).
+  6. Privacy: never send content from private pages; AI requests send only public image URLs or
+     minimal context; users can exclude sites.
+  7. Performance: process new subtrees only, never re-scan the whole page.
+  8. A failing fixer must never break the page.
+
+rules:
+  proposal:
+    - State which of the 8 principles the change touches and how it keeps them.
+    - Include a "Non-goals" section.
+    - For any change to what fixers write into pages, name the false-positive risks.
+  specs:
+    - Fixer requirements MUST include at least one "leaves the page untouched" scenario
+      (the case where doing nothing is correct).
+    - Quote exact Ukrainian strings the user will hear or see.
+  design:
+    - Explain how every DOM change is reverted on toggle off.
+    - Note the performance impact on large pages (new subtrees only, no full re-scans).
+  tasks:
+    - Include a task to add fixture cases to test/fixtures/broken.html with checks in
+      test/run-fixers.mjs, covering both the fix and the must-stay-untouched case.
+    - Include a task to run npm run audit and review new changes for false positives
+      when fixer behavior changes.
+    - Include a task to update CLAUDE.md when the fixer list, contract or commands change.
+
+operations:
+  apply:
+    guidance:
+      - Run npm test after each fixer change; all checks must pass before marking tasks done.
+      - Flag anything that needs a manual screen reader check instead of claiming it is verified.
