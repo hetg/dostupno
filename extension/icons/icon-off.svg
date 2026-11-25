@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Доступно is off on this site: the same "Д" in grey, crossed out.
+       The slash (not just the grey) carries the meaning, so it reads without colour. -->
+  <defs>
+    <clipPath id="r"><rect width="128" height="128" rx="24"/></clipPath>
+  </defs>
+  <g clip-path="url(#r)">
+    <rect width="128" height="128" fill="#5f6368"/>
+    <path fill="#e8eaed" fill-rule="evenodd"
+          d="M50 18H96V86H110V116H94V102H34V116H18V86H28Z
+             M64 34H80V86H44Z"/>
+    <line x1="4" y1="4" x2="124" y2="124" stroke="#202124" stroke-width="26" stroke-linecap="round"/>
+    <line x1="4" y1="4" x2="124" y2="124" stroke="#e8eaed" stroke-width="12" stroke-linecap="round"/>
+  </g>
+</svg>

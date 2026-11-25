@@ -67,16 +67,55 @@ try {
   check('content scripts fix the page: lang set', (await page.getAttribute('html', 'lang')) === 'uk');
   check('the extension causes no page errors', pageErrors.length === 0, pageErrors.join('; '));
 
+  /** Toolbar tooltip for a tab, as screen readers announce it on the toolbar button. */
+  const titleOf = async (p) => {
+    await p.bringToFront();
+    return worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      return chrome.action.getTitle({ tabId: tab.id });
+    });
+  };
+  const ON = 'Доступно: увімкнено на цьому сайті';
+  const OFF = 'Доступно: вимкнено на цьому сайті';
+  check('toolbar: tooltip says on', (await titleOf(page)) === ON, await titleOf(page));
+  // A second tab of the same site, and a page where Доступно can't run.
+  const page2 = await context.newPage();
+  await page2.goto(url);
+  await page2.waitForTimeout(1000);
+  const blank = await context.newPage();
+  await blank.goto('about:blank');
+  await blank.waitForTimeout(300);
+  check('toolbar: a page where Доступно can\'t run keeps the default tooltip', (await titleOf(blank)) === 'Доступно', await titleOf(blank));
+
   // Turn the site off the way the popup and Alt+Shift+D do: through storage.
   await worker.evaluate((host) => chrome.storage.sync.set({ disabledSites: [host] }), '127.0.0.1');
   await page.waitForTimeout(500);
   check('turning the site off reverts the page live', !(await page.getAttribute('#logo-link', 'aria-label')) && !(await page.getAttribute('html', 'lang')));
   const announced = await page.evaluate(() => document.getElementById('dostupno-live')?.textContent);
   check('turning off is announced to screen readers', announced === 'Доступно вимкнено на цьому сайті', announced);
+  check('toolbar: tooltip says off after turning the site off', (await titleOf(page)) === OFF, await titleOf(page));
+  check('toolbar: another tab of the same site follows', (await titleOf(page2)) === OFF, await titleOf(page2));
+  check('toolbar: unrelated page unaffected', (await titleOf(blank)) === 'Доступно', await titleOf(blank));
 
   await worker.evaluate(() => chrome.storage.sync.set({ disabledSites: [] }));
   await page.waitForTimeout(500);
   check('turning the site back on fixes the page again', (await page.getAttribute('#logo-link', 'aria-label')) === 'Головна сторінка');
+  check('toolbar: tooltip says on again', (await titleOf(page)) === ON && (await titleOf(page2)) === ON, `${await titleOf(page)} / ${await titleOf(page2)}`);
+
+  // Navigating an "off" tab to a page where Доступно can't run resets the icon.
+  await worker.evaluate((host) => chrome.storage.sync.set({ disabledSites: [host] }), '127.0.0.1');
+  await page2.waitForTimeout(500);
+  await page2.goto('about:blank');
+  await page2.waitForTimeout(500);
+  check('toolbar: navigating away from an off site resets the tooltip', (await titleOf(page2)) === 'Доступно', await titleOf(page2));
+  // Same server under another hostname = a different site, where Доступно is on.
+  await page2.goto(url.replace('127.0.0.1', 'localhost'));
+  await page2.waitForTimeout(1000);
+  check('toolbar: navigating to a site where Доступно is on shows on', (await titleOf(page2)) === ON, await titleOf(page2));
+  await worker.evaluate(() => chrome.storage.sync.set({ disabledSites: [] }));
+  await page.waitForTimeout(500);
+  await page2.close();
+  await blank.close();
 
   // The screen reader profile controls the label fixers; the page language stays.
   await worker.evaluate(() => chrome.storage.sync.set({ profiles: { screenreader: false, lowvision: false } }));

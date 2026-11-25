@@ -90,11 +90,26 @@
 
   const shouldRun = () => settings.enabled && !settings.disabledSites.includes(host);
 
+  /**
+   * Tell the background whether Доступно runs on this page, for the toolbar
+   * icon. Fire-and-forget: if the extension was reloaded or the worker is gone,
+   * the page must not notice.
+   */
+  const reportState = () => {
+    try {
+      const sent = chrome.runtime.sendMessage({ type: 'dostupno:state', active });
+      if (sent && typeof sent.catch === 'function') sent.catch(() => {});
+    } catch (_) {
+      // No background to tell (tests, extension reloaded): nothing to do.
+    }
+  };
+
   const apply = () => {
     if (shouldRun()) {
       deactivate(); // profiles may have changed: start clean
       activate();
     } else deactivate();
+    reportState();
   };
 
   chrome.storage.sync.get(DEFAULTS, (stored) => {
@@ -111,6 +126,7 @@
     else if (wasRunning !== nowRunning) nowRunning ? activate() : deactivate();
     if (wasRunning !== nowRunning) {
       D.announce(nowRunning ? 'Доступно увімкнено на цьому сайті' : 'Доступно вимкнено на цьому сайті');
+      reportState();
     }
   });
 
