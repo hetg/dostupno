@@ -66,6 +66,7 @@
       }
       log.length = 0;
       document.querySelectorAll('[data-dostupno-style]').forEach((s) => s.remove());
+      document.querySelectorAll('[data-dostupno-needs-ai]').forEach((el) => el.removeAttribute('data-dostupno-needs-ai'));
       processed = new WeakMap();
     },
 
@@ -134,7 +135,9 @@
       if (node.nodeType === 3) text += ' ' + node.nodeValue;
       else if (node.nodeType === 1) {
         if (node.getAttribute('aria-hidden') === 'true') return;
-        if (node.tagName === 'IMG') text += ' ' + (node.getAttribute('alt') || '');
+        const label = clean(node.getAttribute('aria-label'));
+        if (label) text += ' ' + label; // a labelled child names its parent (accname 2C)
+        else if (node.tagName === 'IMG') text += ' ' + (node.getAttribute('alt') || '');
         else if (node.tagName.toLowerCase() === 'svg') {
           const t = node.querySelector('title');
           text += ' ' + (node.getAttribute('aria-label') || (t ? t.textContent : ''));

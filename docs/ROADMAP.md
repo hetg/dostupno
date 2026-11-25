@@ -5,9 +5,11 @@
 - [x] Revert everything on toggle off; Alt+Shift+D shortcut
 - [x] Popup and welcome page in Ukrainian, accessible
 - [x] Smoke test with Playwright
-- [ ] Test on 10–20 real Ukrainian sites (government, hromada, shops, news); collect false positives
+- [x] Test on 10–20 real Ukrainian sites (government, hromada, shops, news); collect false positives
+      (`npm run audit`, 22 sites. Fixed: contrast turned white button text dark, example
+      placeholders used as labels, "close-search" named "Пошук", names overriding a labelled child)
 - [ ] Test with NVDA (Windows) and VoiceOver
-- [ ] Icons (16/32/48/128) for the toolbar and store
+- [x] Icons (16/32/48/128) for the toolbar and store
 
 ## Weekend 2 — backend with AI
 - [ ] Backend endpoint: alt text for an image URL (vision LLM, Ukrainian, with page context)

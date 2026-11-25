@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Доступно: a bold "Д" in yellow on navy. ~10:1 contrast, readable at 16px. -->
+  <rect width="128" height="128" rx="24" fill="#0b3d91"/>
+  <path fill="#ffd400" fill-rule="evenodd"
+        d="M50 18H96V86H110V116H94V102H34V116H18V86H28Z
+           M64 34H80V86H44Z"/>
+</svg>

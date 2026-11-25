@@ -1,0 +1,34 @@
+# Public pages used by `npm run audit`. One URL per line; # starts a comment.
+# Only public landing pages: no logins, no private data.
+# Removed: tax.gov.ua, uz.gov.ua, mon.gov.ua, dsns.gov.ua, omr.gov.ua (block headless browsers),
+# dniprorada.gov.ua (home page returns 404), vinnytsia.gov.ua (no DNS).
+
+# Government and services
+https://www.kmu.gov.ua/
+https://diia.gov.ua/
+https://www.pfu.gov.ua/
+https://moz.gov.ua/
+
+# Hromadas and city councils
+https://kyivcity.gov.ua/
+https://city-adm.lviv.ua/
+https://www.vmr.gov.ua/
+https://zp.gov.ua/
+https://bucha-rada.gov.ua/
+
+# Shops and services
+https://rozetka.com.ua/
+https://prom.ua/
+https://epicentrk.ua/
+https://comfy.ua/
+https://novaposhta.ua/
+https://www.olx.ua/
+https://allo.ua/
+https://silpo.ua/
+
+# News
+https://www.pravda.com.ua/
+https://suspilne.media/
+https://tsn.ua/
+https://www.ukrinform.ua/
+https://nv.ua/

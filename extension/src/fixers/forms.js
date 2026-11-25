@@ -1,7 +1,8 @@
 /**
  * Fixer: form fields without a label.
  * A screen reader user hears only "edit text" and has no idea what to type.
- * Sources, best first: placeholder, title, nearby preceding text, name attribute.
+ * Sources, best first: placeholder (unless it's an example value), title,
+ * nearby preceding text, name/id/type attribute.
  */
 (() => {
   const D = window.Dostupno;
@@ -17,6 +18,16 @@
     [/address|адрес/i, 'Адреса'],
     [/comment|message|повідомлення/i, 'Повідомлення'],
   ];
+
+  /**
+   * Placeholders that show an example value or an input mask ("name@mail.com",
+   * "+38 (0__) ___-__-__", "дд.мм.рррр") say what to type, not what the field is.
+   */
+  D.looksLikeExample = (s) =>
+    /@|^https?:|www\.|\.(com|ua|net|org)\b/i.test(s) || // e-mail or URL
+    /^[+\d\s()_\-xX#*.]{4,}$/.test(s) || // phone, card or number mask
+    /^(дд|dd|мм|mm|рррр|yyyy|гг)\b/i.test(s) || // date mask
+    /^(напр|наприклад|e\.?g\.|приклад)/i.test(s); // "наприклад: Іван"
 
   /** Short text right before the field (same parent or previous sibling). */
   const nearbyText = (el) => {
@@ -45,8 +56,11 @@
         if (D.isHidden(el)) continue;
         if (D.accessibleName(el)) continue;
 
+        const placeholder = D.clean(el.getAttribute('placeholder'));
         let name =
-          D.clean(el.getAttribute('placeholder')) || D.clean(el.getAttribute('title')) || nearbyText(el);
+          (placeholder && !D.looksLikeExample(placeholder) ? placeholder : '') ||
+          D.clean(el.getAttribute('title')) ||
+          nearbyText(el);
 
         if (!name) {
           const attr = (el.getAttribute('name') || '') + ' ' + (el.id || '') + ' ' + (el.type || '');

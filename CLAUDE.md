@@ -32,9 +32,12 @@ extension/
   src/content.js         Loads settings, runs fixers, watches DOM changes, reverts on toggle off.
   src/background.js      Keyboard shortcut (Alt+Shift+D) toggles the current site; opens welcome page on install.
   popup/                 Popup + welcome page (same file, ?welcome=1).
+  icons/                 icon.svg (source) + PNGs rendered by `npm run icons`.
 backend/                 Not built yet. See backend/README.md for the planned API.
 test/fixtures/           Pages with known accessibility problems.
 test/run-fixers.mjs      Smoke test: injects content scripts into the fixture with Playwright.
+test/audit-sites.mjs     Real-site audit: records every change on the sites in test/sites.txt.
+scripts/make-icons.mjs   Renders extension/icons/icon.svg to 16/32/48/128 PNGs.
 ```
 
 ### Fixer contract
@@ -48,6 +51,8 @@ Dostupno.registerFixer({
     // Use Dostupno.once(el, id) to skip elements already handled
     // Change things ONLY via Dostupno.changes.*
   },
+  stop() {},                  // optional: disconnect observers/timers. Called on toggle off,
+                              // before revertAll(); nothing may touch the page after it.
 });
 ```
 Add new fixer files to `manifest.json` `content_scripts.js`, **before** `src/content.js`.
@@ -59,19 +64,30 @@ Add new fixer files to `manifest.json` `content_scripts.js`, **before** `src/con
 
 ### Elements that need AI
 Fixers mark what they can't solve with `data-dostupno-needs-ai="alt" | "name" | "label"`.
-The backend (weekend 2) will fill these in.
+The backend (weekend 2) will fill these in. `revertAll()` removes these markers too.
 
 ## Current fixers (weekend 1, no AI)
 - `lang`: sets `<html lang>` when missing (detects uk/ru/en by unique letters).
 - `images`: decorative images → `alt=""`; figcaption/title → alt; filenames as alt get flagged for AI.
-- `names`: icon-only buttons/links get Ukrainian names from title, symbols, icon class names, href.
-- `forms`: unlabeled fields get aria-label from placeholder, title, nearby text, or name attribute.
-- `contrast` (lowvision): shifts text color minimally to reach WCAG AA (4.5:1 / 3:1 large).
+- `names`: icon-only buttons/links get Ukrainian names from title, symbols, a text link to the same
+  URL (card headline), href domain, icon class names. "close-search" → "Закрити пошук", not "Пошук".
+- `forms`: unlabeled fields get aria-label from placeholder (unless it's an example like
+  `name@mail.com` or a mask like `+38 (0__)`), title, nearby text, or name/id/type.
+- `contrast` (lowvision): reaches WCAG AA (4.5:1 / 3:1 large) with the smallest change.
+  Only checks text on screen (IntersectionObserver), reads the real background via
+  `elementsFromPoint`, keeps polarity (light text never becomes dark; if white isn't enough,
+  a small button/badge background is darkened instead). Skips hidden/sr-only text, anything over
+  images/gradients/filters, mid-transition colors, and ratios < 1.5:1 (background guess is wrong).
 - `focus` (lowvision): two-tone focus ring visible on any background.
 
 ## Commands
 - `npm install` then `npx playwright install chromium` (first time)
 - `npm test`: smoke test against `test/fixtures/broken.html`
+- `npm run audit`: run all fixers on the real sites in `test/sites.txt`; writes
+  `test/audit-report/<host>.json` (every change with context) and `summary.md`.
+  `npm run audit -- https://site.ua/` for specific URLs; `SHOTS=1` adds before/after
+  pictures of contrast fixes. Run it after changing a fixer and review new changes for false positives.
+- `npm run icons`: re-render the PNG icons after editing `extension/icons/icon.svg`
 - Load in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `extension/`
 - Load in Firefox: `about:debugging` → This Firefox → Load Temporary Add-on → `extension/manifest.json`
 
@@ -79,6 +95,7 @@ The backend (weekend 2) will fill these in.
 - Plain JavaScript, no build step for now (keeps "Load unpacked" instant). Consider TypeScript + esbuild later.
 - User-facing text is Ukrainian. Code, comments and commit messages in English.
 - When adding a fixer, add a broken example to `test/fixtures/broken.html` and a check to `test/run-fixers.mjs`.
+  When a real-site audit finds a false positive, add it to the fixture as a "must stay untouched" check.
 - Test real changes with a screen reader (NVDA is free on Windows; VoiceOver on Mac) before calling them done.
 
 ## Roadmap

@@ -78,6 +78,13 @@
     clearTimeout(timer);
     timer = null;
     pending.clear();
+    for (const fixer of D.fixers) {
+      try {
+        fixer.stop?.(); // fixers with observers or timers must stop touching the page
+      } catch (err) {
+        console.warn('[Доступно] fixer stop failed:', fixer.id, err);
+      }
+    }
     D.changes.revertAll();
   };
 

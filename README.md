@@ -12,6 +12,7 @@ Install once, choose what helps you, and every site gets better automatically. U
 ```bash
 npm install
 npx playwright install chromium
-npm test
+npm test          # smoke test on test/fixtures/broken.html
+npm run audit     # run the fixers on real Ukrainian sites, report every change
 ```
 See `CLAUDE.md` for architecture and principles, and `docs/ROADMAP.md` for the plan.
