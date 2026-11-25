@@ -13,7 +13,7 @@
 
   D.registerFixer({
     id: 'images',
-    profiles: ['all'],
+    profiles: ['screenreader'],
     run(root) {
       for (const img of D.queryAll(root, 'img')) {
         if (!D.once(img, 'images')) continue;

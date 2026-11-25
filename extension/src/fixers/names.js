@@ -124,7 +124,7 @@
 
   D.registerFixer({
     id: 'names',
-    profiles: ['all'],
+    profiles: ['screenreader'],
     run(root) {
       const selector = 'a[href], button, [role="button"], [role="link"], input[type="submit"], input[type="button"], input[type="image"]';
       for (const el of D.queryAll(root, selector)) {

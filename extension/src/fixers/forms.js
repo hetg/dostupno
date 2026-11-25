@@ -47,7 +47,7 @@
 
   D.registerFixer({
     id: 'forms',
-    profiles: ['all'],
+    profiles: ['screenreader'],
     run(root) {
       const selector =
         'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]), select, textarea';

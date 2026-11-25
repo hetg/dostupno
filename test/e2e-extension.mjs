@@ -78,6 +78,16 @@ try {
   await page.waitForTimeout(500);
   check('turning the site back on fixes the page again', (await page.getAttribute('#logo-link', 'aria-label')) === 'Головна сторінка');
 
+  // The screen reader profile controls the label fixers; the page language stays.
+  await worker.evaluate(() => chrome.storage.sync.set({ profiles: { screenreader: false, lowvision: false } }));
+  await page.waitForTimeout(500);
+  const logoOff = await axName('#logo-link');
+  check('screen reader profile off: logo link loses its name', logoOff === '', logoOff);
+  check('screen reader profile off: page language stays', (await page.getAttribute('html', 'lang')) === 'uk');
+  await worker.evaluate(() => chrome.storage.sync.set({ profiles: { screenreader: true, lowvision: false } }));
+  await page.waitForTimeout(500);
+  check('screen reader profile back on: logo link named again', (await axName('#logo-link')) === 'Головна сторінка', await axName('#logo-link'));
+
   // Popup (opened as a page: there is no "current site", so the site section hides).
   const popup = await context.newPage();
   const popupErrors = [];

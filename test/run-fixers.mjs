@@ -15,7 +15,10 @@ const manifest = JSON.parse(readFileSync(path.join(root, 'extension/manifest.jso
 const scripts = manifest.content_scripts[0].js.map((f) => readFileSync(path.join(root, 'extension', f), 'utf8'));
 
 const chromeShim = `
-  window.__store = { enabled: true, profiles: { screenreader: true, lowvision: true }, disabledSites: [] };
+  window.__store = Object.assign(
+    { enabled: true, profiles: { screenreader: true, lowvision: true }, disabledSites: [] },
+    window.__initialStore || {}
+  );
   window.__listeners = [];
   window.chrome = {
     storage: {
@@ -69,22 +72,26 @@ const page = await browser.newPage();
 const fixture = 'file://' + path.join(root, 'test/fixtures/broken.html');
 await page.goto(fixture);
 
-const cdp = await page.context().newCDPSession(page);
-await cdp.send('DOM.enable');
-await cdp.send('Accessibility.enable');
-/** Accessible name as computed by Chromium (null if the element doesn't exist). */
-const axName = async (selector) => {
-  const { root: doc } = await cdp.send('DOM.getDocument', { depth: 0 });
-  const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: doc.nodeId, selector });
-  if (!nodeId) return null;
-  const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
-  return (nodes[0]?.name?.value ?? '').trim();
+/** Accessible names as computed by Chromium for a page (null if the element doesn't exist). */
+const axTools = async (p) => {
+  const cdp = await p.context().newCDPSession(p);
+  await cdp.send('DOM.enable');
+  await cdp.send('Accessibility.enable');
+  const axName = async (selector) => {
+    const { root: doc } = await cdp.send('DOM.getDocument', { depth: 0 });
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: doc.nodeId, selector });
+    if (!nodeId) return null;
+    const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+    return (nodes[0]?.name?.value ?? '').trim();
+  };
+  const axNames = async () => {
+    const out = {};
+    for (const [key, sel] of Object.entries(NAMED)) out[key] = await axName(sel);
+    return out;
+  };
+  return { axName, axNames };
 };
-const axNames = async () => {
-  const out = {};
-  for (const [key, sel] of Object.entries(NAMED)) out[key] = await axName(sel);
-  return out;
-};
+const { axNames } = await axTools(page);
 
 // The fixture must really be broken, or the checks below prove nothing. Chromium falls
 // back to the placeholder or a lone symbol ("🔍", "×"); neither is a meaningful name.
@@ -225,5 +232,52 @@ const late = await page.evaluate(() => ({
 check('after revert: no new changes', late.changes === 0 && late.far === 'rgb(181, 181, 181)', JSON.stringify(late));
 
 console.log(`\n${r.changes} changes applied before revert. ${failed ? failed + ' check(s) failed' : 'All checks passed.'}`);
+// --- Screen reader profile off: only the page-language fix may touch the page. ---
+/** Open the fixture with the given settings and let the fixers run. */
+const openFixture = async (initialStore) => {
+  const p = await browser.newPage();
+  await p.goto(fixture);
+  await p.evaluate((store) => (window.__initialStore = store), initialStore);
+  await p.addScriptTag({ content: chromeShim });
+  for (const s of scripts) await p.addScriptTag({ content: s });
+  await p.waitForTimeout(1500); // includes the late-added content
+  return p;
+};
+/** What Доступно left on the page: elements it marked, AI markers, lang. */
+const footprint = (p) =>
+  p.evaluate(() => ({
+    marked: [...document.querySelectorAll('[data-dostupno]')].map((el) => el.tagName.toLowerCase()),
+    needsAi: document.querySelectorAll('[data-dostupno-needs-ai]').length,
+    lang: document.documentElement.getAttribute('lang'),
+  }));
+const namedByUs = (names) =>
+  Object.entries(names).filter(([k, v]) => meaningful(k, v) && !NAMED_BY_SITE.has(k) && k !== 'figureImg');
+
+const off = await openFixture({ profiles: { screenreader: false, lowvision: false } });
+const offPrint = await footprint(off);
+check('screen reader profile off: only <html lang> is changed', offPrint.marked.join() === 'html', offPrint.marked.join());
+check('screen reader profile off: no AI markers', offPrint.needsAi === 0, offPrint.needsAi);
+check('screen reader profile off: page language still set', offPrint.lang === 'uk', offPrint.lang);
+const offNamed = namedByUs(await (await axTools(off)).axNames());
+check('screen reader profile off: controls get no names from Доступно', offNamed.length === 0, JSON.stringify(offNamed));
+await off.close();
+
+// --- Switching the screen reader profile off and on with the page open. ---
+const live = await openFixture({});
+const liveAx = await axTools(live);
+await live.evaluate(() => window.__setStore({ profiles: { screenreader: false, lowvision: false } }));
+await live.waitForTimeout(300);
+const liveOff = await footprint(live);
+const liveOffNamed = namedByUs(await liveAx.axNames());
+check('turning the profile off removes names live', liveOffNamed.length === 0, JSON.stringify(liveOffNamed));
+check('turning the profile off removes AI markers live', liveOff.needsAi === 0, liveOff.needsAi);
+check('turning the profile off keeps the page language', liveOff.lang === 'uk', liveOff.lang);
+await live.evaluate(() => window.__setStore({ profiles: { screenreader: true, lowvision: false } }));
+await live.waitForTimeout(300);
+const liveOn = await liveAx.axNames();
+check('turning the profile back on restores names live', liveOn.logo === 'Головна сторінка' && liveOn.burger === 'Меню', JSON.stringify({ logo: liveOn.logo, burger: liveOn.burger }));
+await live.close();
+
+console.log(`\n${failed ? failed + ' check(s) failed in total' : 'All profile checks passed.'}`);
 await browser.close();
 process.exit(failed ? 1 : 0);

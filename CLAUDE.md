@@ -72,11 +72,13 @@ Fixers mark what they can't solve with `data-dostupno-needs-ai="alt" | "name" | 
 The backend (weekend 2) will fill these in. `revertAll()` removes these markers too.
 
 ## Current fixers (weekend 1, no AI)
-- `lang`: sets `<html lang>` when missing (detects uk/ru/en by unique letters).
-- `images`: decorative images → `alt=""`; figcaption/title → alt; filenames as alt get flagged for AI.
-- `names`: icon-only buttons/links get Ukrainian names from title, symbols, a text link to the same
+Profile in brackets: `all` always runs; `screenreader` and `lowvision` follow the popup choices
+"Я користуюсь скрінрідером" (on by default) and "Я погано бачу".
+- `lang` (all): sets `<html lang>` when missing (detects uk/ru/en by unique letters).
+- `images` (screenreader): decorative images → `alt=""`; figcaption/title → alt; filenames as alt get flagged for AI.
+- `names` (screenreader): icon-only buttons/links get Ukrainian names from title, symbols, a text link to the same
   URL (card headline), href domain, icon class names. "close-search" → "Закрити пошук", not "Пошук".
-- `forms`: unlabeled fields get aria-label from placeholder (unless it's an example like
+- `forms` (screenreader): unlabeled fields get aria-label from placeholder (unless it's an example like
   `name@mail.com` or a mask like `+38 (0__)`), title, nearby text, or name/id/type.
 - `contrast` (lowvision): reaches WCAG AA (4.5:1 / 3:1 large) with the smallest change.
   Only checks text on screen (IntersectionObserver), reads the real background via
