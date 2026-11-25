@@ -231,7 +231,7 @@ const late = await page.evaluate(() => ({
 }));
 check('after revert: no new changes', late.changes === 0 && late.far === 'rgb(181, 181, 181)', JSON.stringify(late));
 
-console.log(`\n${r.changes} changes applied before revert. ${failed ? failed + ' check(s) failed' : 'All checks passed.'}`);
+console.log(`\n${r.changes} changes applied before revert.\n`);
 // --- Screen reader profile off: only the page-language fix may touch the page. ---
 /** Open the fixture with the given settings and let the fixers run. */
 const openFixture = async (initialStore) => {
@@ -272,12 +272,16 @@ const liveOffNamed = namedByUs(await liveAx.axNames());
 check('turning the profile off removes names live', liveOffNamed.length === 0, JSON.stringify(liveOffNamed));
 check('turning the profile off removes AI markers live', liveOff.needsAi === 0, liveOff.needsAi);
 check('turning the profile off keeps the page language', liveOff.lang === 'uk', liveOff.lang);
+check('turning the profile off leaves only <html lang> changed', liveOff.marked.join() === 'html', liveOff.marked.join());
 await live.evaluate(() => window.__setStore({ profiles: { screenreader: true, lowvision: false } }));
 await live.waitForTimeout(300);
 const liveOn = await liveAx.axNames();
 check('turning the profile back on restores names live', liveOn.logo === 'Головна сторінка' && liveOn.burger === 'Меню', JSON.stringify({ logo: liveOn.logo, burger: liveOn.burger }));
+check('turning the profile back on restores form labels live', liveOn.email === 'Електронна пошта', liveOn.email);
+const figureAlt = await live.evaluate(() => document.querySelector('figure img').getAttribute('alt'));
+check('turning the profile back on restores alt text live', figureAlt === 'Відкриття нового укриття у школі №5', figureAlt);
 await live.close();
 
-console.log(`\n${failed ? failed + ' check(s) failed in total' : 'All profile checks passed.'}`);
+console.log(`\n${failed ? failed + ' check(s) failed' : 'All checks passed.'}`);
 await browser.close();
 process.exit(failed ? 1 : 0);

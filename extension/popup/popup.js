@@ -62,6 +62,9 @@ async function renderStatus(tab) {
 async function init() {
   const settings = await chrome.storage.sync.get(DEFAULTS);
 
+  const tab = isWelcome ? null : await currentTab();
+  const host = tab && hostOf(tab.url);
+
   // Profiles
   const form = $('profiles');
   for (const [name, on] of Object.entries(settings.profiles)) {
@@ -75,6 +78,8 @@ async function init() {
     };
     await chrome.storage.sync.set({ profiles });
     if (isWelcome) $('welcome-done').hidden = false;
+    // The page re-runs its fixers with the new profiles: show the new count.
+    else if (host) setTimeout(() => renderStatus(tab), 150);
   });
 
   if (isWelcome) {
@@ -87,8 +92,6 @@ async function init() {
   }
 
   // Site toggle
-  const tab = await currentTab();
-  const host = tab && hostOf(tab.url);
   if (!host) {
     $('site-section').hidden = true;
     return;
