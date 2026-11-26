@@ -102,18 +102,26 @@ const recorder = `
         finally { rec.timings[f.id] = (rec.timings[f.id] || 0) + performance.now() - t; current = null; }
       },
     });
-    const { setAttr, setStyle } = D.changes;
+    const { setAttr, removeAttr, setStyle } = D.changes;
+    // Outside run() means a deferred change: attributes only come from forms (a
+    // placeholder the site changed), styles only from contrast (text scrolled into view).
     D.changes.setAttr = (el, name, value) => {
       if (el.getAttribute(name) !== value) rec.changes.push({
-        fixer: current, kind: 'attr', name, old: el.getAttribute(name), value,
+        fixer: current || 'forms', kind: 'attr', name, old: el.getAttribute(name), value,
         tag: el.tagName.toLowerCase(), html: snippet(el), context: context(el),
       });
       return setAttr(el, name, value);
     };
+    if (removeAttr) D.changes.removeAttr = (el, name) => {
+      if (el.hasAttribute(name)) rec.changes.push({
+        fixer: current || 'forms', kind: 'attr', name, old: el.getAttribute(name), value: null,
+        tag: el.tagName.toLowerCase(), html: snippet(el), context: context(el),
+      });
+      return removeAttr(el, name);
+    };
     D.changes.setStyle = (el, prop, value) => {
       window.__auditEls.push(el);
       rec.changes.push({
-        // Outside run() means a deferred check; only contrast does that today.
         fixer: current || 'contrast', kind: 'style', name: prop, old: getComputedStyle(el)[prop], value,
         tag: el.tagName.toLowerCase(), text: D.clean(el.textContent).slice(0, 80),
         fontSize: getComputedStyle(el).fontSize, context: context(el),

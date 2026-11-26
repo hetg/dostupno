@@ -62,6 +62,37 @@
       <div><input type="tel" name="mob" placeholder="+38 (0__) ___-__-__"></div>
     </form>
 
+    <!-- Hints and placeholders that must not mislead the forms fixer. -->
+    <form action="/hints" id="hint-cases">
+      <div><input type="text" name="site_search" id="focus-clear" placeholder="Пошук по сайту"
+        onfocus="this.placeholder=''" onblur="this.placeholder='Пошук по сайту'"></div>
+      <div><input type="text" name="q" id="plain-q"></div>
+      <div><input type="number" name="q" id="qty" min="1"></div>
+      <div><input type="text" name="name" id="name-field"></div>
+    </form>
+
+    <!-- Placeholder typed out letter by letter, like comfy.ua's header search. -->
+    <form action="/shop" id="typed">
+      <div><input type="text" name="q" id="typed-search"></div>
+      <div><input type="text" name="f1" id="typed-unknown"></div>
+      <div><input type="text" name="q2" id="typed-labelled" aria-label="Пошук товарів"></div>
+    </form>
+    <script>
+      (() => {
+        const words = ['блендер', 'телевізор', 'ноутбук'];
+        const fields = document.querySelectorAll('#typed input');
+        let w = 0, n = 0;
+        const step = () => {
+          n++;
+          if (n > words[w].length) { n = 1; w = (w + 1) % words.length; }
+          fields.forEach((f) => f.setAttribute('placeholder', words[w].slice(0, n)));
+        };
+        step();
+        window.__typedSteps = 0;
+        setInterval(() => { step(); window.__typedSteps++; }, 80);
+      })();
+    </script>
+
     <article id="video-card">
       <a href="/news/1" class="video-item"><svg class="play-icon" width="40" height="40"><circle cx="20" cy="20" r="18"/></svg></a>
       <h3><a href="/news/1">Відкриття нової школи у громаді</a></h3>

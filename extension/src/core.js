@@ -28,6 +28,14 @@
       el.setAttribute('data-dostupno', '');
     },
 
+    /** Remove an attribute, remembering the value it had (revertAll puts it back). */
+    removeAttr(el, name) {
+      if (!el.hasAttribute(name)) return;
+      log.push({ el, kind: 'attr', name, oldValue: el.getAttribute(name) });
+      el.removeAttribute(name);
+      el.setAttribute('data-dostupno', '');
+    },
+
     /** Set an inline style property with !important, remembering the original. */
     setStyle(el, prop, value) {
       log.push({
