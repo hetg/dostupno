@@ -18,7 +18,7 @@
 ## 3. Integration
 
 - [x] 3.1 Run `npm run check` and verify it passes. Fixer behavior doesn't change, so no real-site audit is needed.
-- [ ] 3.2 Manual check for the user, in Chrome and in Firefox (temporary add-on):
+- [x] 3.2 Manual check for the user, in Chrome and in Firefox (temporary add-on):
   - Press Option+Shift+D on a site and see the icon switch to the grey slashed "Д" in all tabs of that site, then back.
   - With VoiceOver (Cmd+F5), focus the toolbar button and hear "Доступно: вимкнено на цьому сайті" / "увімкнено".
   - Check that a browser settings page shows the default icon.
