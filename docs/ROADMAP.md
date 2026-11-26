@@ -8,7 +8,7 @@
 - [x] Test on 10–20 real Ukrainian sites (government, hromada, shops, news); collect false positives
       (`npm run audit`, 22 sites. Fixed: contrast turned white button text dark, example
       placeholders used as labels, "close-search" named "Пошук", names overriding a labelled child)
-- [ ] Test with NVDA (Windows) and VoiceOver
+- [x] Test with NVDA (Windows) and VoiceOver
 - [x] Icons (16/32/48/128) for the toolbar and store
 
 ## Weekend 2 — backend with AI
