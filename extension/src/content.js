@@ -12,6 +12,8 @@
     enabled: true,
     profiles: { screenreader: true, lowvision: false },
     disabledSites: [],
+    ai: false, // AI descriptions are opt-in (see privacy.js)
+    privateSites: [], // never send anything from these sites; fixing is unaffected
   };
 
   let settings = DEFAULTS;

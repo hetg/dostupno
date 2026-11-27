@@ -6,11 +6,12 @@
   "type": "module",
   "scripts": {
     "test": "node test/run-fixers.mjs",
+    "test:privacy": "node --test test/privacy.test.mjs",
     "audit": "node test/audit-sites.mjs",
     "icons": "node scripts/make-icons.mjs",
     "test:e2e": "node test/e2e-extension.mjs",
     "lint": "eslint . && web-ext lint --source-dir extension",
-    "check": "npm run lint && npm test && npm run test:e2e && openspec validate --all --strict"
+    "check": "npm run lint && npm test && npm run test:privacy && npm run test:e2e && openspec validate --all --strict"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

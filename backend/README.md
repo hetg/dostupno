@@ -27,6 +27,10 @@ Response:
 ## Rules
 - Never accept full page HTML. Only the item and a short context string.
 - Refuse requests from excluded domains (banks, Diia, mail, medical) even if the extension sends them.
+  The extension's list and rules live in `extension/src/privacy.js` (`PRIVATE_DOMAINS`, `PRIVATE_PATHS`,
+  `mayShareFrom`, `mayShareUrl`). How the backend gets the same list (shared file vs. its own copy) is
+  decided in change 2; it must not silently drift from the extension's.
+- About the page, accept only its hostname (`pageHost`), never the full page URL.
 - Cache key: sha256 of image URL (alt) or of site + normalized element HTML (name).
 - Alt text style: Ukrainian, 1 sentence, under 150 chars, no "Зображення…" prefix, say "декоративне" when it is.
 

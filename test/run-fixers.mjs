@@ -16,7 +16,7 @@ const scripts = manifest.content_scripts[0].js.map((f) => readFileSync(path.join
 
 const chromeShim = `
   window.__store = Object.assign(
-    { enabled: true, profiles: { screenreader: true, lowvision: true }, disabledSites: [] },
+    { enabled: true, profiles: { screenreader: true, lowvision: true }, disabledSites: [], ai: false, privateSites: [] },
     window.__initialStore || {}
   );
   window.__listeners = [];
@@ -200,6 +200,49 @@ check('near-invisible text untouched (background unknown)', r.ghost === 'rgb(250
 check('hidden text untouched', r.hiddenPale === 'rgb(181, 181, 181)', r.hiddenPale);
 check('off-screen text untouched until scrolled to', farBefore === 'rgb(181, 181, 181)', farBefore);
 check('off-screen text fixed once seen', r.far !== 'rgb(181, 181, 181)', r.far);
+
+// Privacy settings never change fixing. The fixture is a file: page, which the privacy
+// gate treats as non-public (never shares), so the fixes above already show that
+// private pages keep their local fixes. Opting in to AI or changing the sites excluded
+// from sending must not revert or re-run anything. (A file: page has no hostname, so
+// "this site excluded" itself is covered by test/privacy.test.mjs.)
+const privacy = await page.evaluate(async () => {
+  const D = window.Dostupno;
+  const snapshot = () => ({
+    changes: D.changes.count(),
+    marked: document.querySelectorAll('[data-dostupno]').length,
+    logo: document.querySelector('#logo-link').getAttribute('aria-label'),
+  });
+  // Spy on reverts and fixer runs, so a re-run that happens to give the same result still fails.
+  let reverts = 0;
+  let runs = 0;
+  const revertAll = D.changes.revertAll;
+  D.changes.revertAll = (...args) => { reverts++; return revertAll(...args); };
+  const fixerRuns = D.fixers.map((f) => f.run);
+  D.fixers.forEach((f, i) => { f.run = (...args) => { runs++; return fixerRuns[i].apply(f, args); }; });
+  const before = snapshot();
+  window.__setStore({ ai: true });
+  window.__setStore({ privateSites: ['example.ua'] });
+  await new Promise((r) => setTimeout(r, 400));
+  const afterSet = snapshot();
+  window.__setStore({ ai: false, privateSites: [] });
+  D.changes.revertAll = revertAll;
+  D.fixers.forEach((f, i) => { f.run = fixerRuns[i]; });
+  return {
+    loaded: typeof D.privacy?.mayShareFrom === 'function',
+    sharesHere: D.privacy?.mayShareFrom(location.href, { ai: true, privateSites: [] }),
+    before,
+    afterSet,
+    reverts,
+    runs,
+  };
+});
+check('privacy gate loads with the content scripts', privacy.loaded);
+check('privacy gate never shares from the file: fixture', privacy.sharesHere === false, privacy.sharesHere);
+check('AI opt-in and site exclusion neither revert nor re-run fixers',
+  privacy.reverts === 0 && privacy.runs === 0, `reverts ${privacy.reverts}, fixer runs ${privacy.runs}`);
+check('AI opt-in and site exclusion leave the fixes untouched',
+  JSON.stringify(privacy.before) === JSON.stringify(privacy.afterSet), JSON.stringify(privacy));
 
 // Turning the site off must revert everything.
 const after = await page.evaluate(() => {

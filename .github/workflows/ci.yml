@@ -27,6 +27,8 @@ jobs:
         run: npm run lint
       - name: Smoke test (fixture, names from Chromium's accessibility tree)
         run: npm test
+      - name: Privacy gate (what may be sent off the device)
+        run: npm run test:privacy
       - name: End-to-end (real unpacked extension)
         run: npm run test:e2e
       - name: OpenSpec specs and changes are valid

@@ -3,11 +3,20 @@
  * - Keyboard shortcut: toggle Доступно for the current site.
  * - First install: open the welcome page so the user can pick a profile.
  * - Toolbar icon: shows per tab whether Доступно runs on the page.
+ * - Privacy gate (privacy.js): Firefox loads it from manifest background.scripts;
+ *   Chrome's service worker has no such list, so it is imported here.
+ *   Anything this script ever sends to a server must pass Dostupno.privacy first,
+ *   checked against sender.url (the browser-reported page URL).
  */
+/* global importScripts */
+if (typeof importScripts === 'function' && !globalThis.Dostupno?.privacy) importScripts('privacy.js');
+
 const DEFAULTS = {
   enabled: true,
   profiles: { screenreader: true, lowvision: false },
   disabledSites: [],
+  ai: false, // AI descriptions are opt-in
+  privateSites: [], // never send anything from these sites (Доступно still fixes them)
 };
 
 chrome.runtime.onInstalled.addListener(({ reason }) => {

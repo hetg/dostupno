@@ -20,6 +20,7 @@ Users are **people with disabilities, not developers**:
 5. **The extension's own UI must be fully accessible**: keyboard, screen reader, high contrast, 200% zoom.
 6. **Privacy.** Never send page content to any server from private pages (banking, Diia, email, medical).
    AI requests (weekend 2+) send only public image URLs or minimal context, and users can exclude sites.
+   AI is opt-in. Every request goes through `Dostupno.privacy` (see "Sending anything off the device").
 7. **Performance.** Fixers must stay fast on big pages. Process new subtrees only (MutationObserver), never re-scan everything.
 8. **A failing fixer must never break the page** (content.js wraps each fixer in try/catch; keep it that way).
 
@@ -28,6 +29,10 @@ Users are **people with disabilities, not developers**:
 extension/
   manifest.json          MV3. Content scripts are plain scripts (not modules), loaded in order.
   src/core.js            window.Dostupno namespace: change log + revert, accessibleName(), helpers.
+  src/privacy.js         Privacy gate: what may be sent off the device (built-in private sites, non-public hosts,
+                         user's privateSites, AI opt-in, signed URLs, secret-field pages). Pure functions on
+                         Dostupno.privacy. Loaded as a content script AND in the background (Firefox: manifest
+                         background.scripts; Chrome: importScripts in background.js).
   src/fixers/*.js        One file per problem. Each calls Dostupno.registerFixer({ id, profiles, run(root, ctx) }).
   src/content.js         Loads settings, runs fixers, watches DOM changes, reverts on toggle off;
                          reports on/off to the background (`dostupno:state`) for the toolbar icon, also after
@@ -44,6 +49,7 @@ backend/                 Not built yet. See backend/README.md for the planned AP
 test/fixtures/           Pages with known accessibility problems.
 test/run-fixers.mjs      Smoke test: injects content scripts into the fixture; names checked via
                          Chromium's accessibility tree (what screen readers get).
+test/privacy.test.mjs    Privacy gate rules (node:test) plus the secret-field page check in Chromium.
 test/e2e-extension.mjs   Loads the real unpacked extension in Chromium and checks it end to end.
 test/audit-sites.mjs     Real-site audit: records every change on the sites in test/sites.txt.
 scripts/make-icons.mjs   Renders extension/icons/icon.svg to 16/32/48/128 PNGs.
@@ -71,8 +77,21 @@ Add new fixer files to `manifest.json` `content_scripts.js`, **before** `src/con
 
 ### Settings (chrome.storage.sync)
 ```js
-{ enabled: true, profiles: { screenreader: true, lowvision: false }, disabledSites: ['example.com'] }
+{ enabled: true, profiles: { screenreader: true, lowvision: false }, disabledSites: ['example.com'],
+  ai: false, privateSites: ['example.ua'] }
 ```
+`disabledSites` turns Доступно off on a site. `ai` (opt-in, off by default) and `privateSites` only control
+what may be sent off the device; they never change which fixers run. No popup controls for them yet
+(they ship with the backend).
+
+### Sending anything off the device
+Any code that sends data to a server MUST pass the privacy gate right before each request:
+`Dostupno.privacy.mayShareFrom(location.href, settings) && !Dostupno.privacy.pageLooksPrivate(document)`
+(`settings` is the whole synced object: the gate also refuses when Доступно is off on the site)
+in the page, `mayShareFrom(sender.url, settings)` again in the background (the browser-reported URL, which
+a page can't fake), and `mayShareUrl(url, settings)` for every item URL. About the page itself send only
+`pageHost(url)`, never the full page URL (reset tokens, invite codes, search terms). The gate fails closed; never bypass or
+cache its answer across pages. Behavior: `openspec/specs/data-sharing/` (after archive).
 
 ### Elements that need AI
 Fixers mark what they can't solve with `data-dostupno-needs-ai="alt" | "name" | "label"`.
@@ -96,8 +115,9 @@ Profile in brackets: `all` always runs; `screenreader` and `lowvision` follow th
 
 ## Commands
 - `npm ci` then `npx playwright install chromium` (first time; the SessionStart hook does this)
-- `npm run check`: everything CI runs (lint, smoke test, e2e, OpenSpec validation). Run before a PR.
+- `npm run check`: everything CI runs (lint, smoke test, privacy gate, e2e, OpenSpec validation). Run before a PR.
 - `npm test`: smoke test against `test/fixtures/broken.html`
+- `npm run test:privacy`: privacy gate rules (node) and the secret-field page check (Chromium)
 - `npm run test:e2e`: real unpacked extension in Chromium (`SHOTS=1` saves a popup screenshot)
 - `npm run lint`: ESLint (incl. the reversibility rule for fixers) + `web-ext lint`.
   Expected web-ext warnings: Firefox ignores `background.service_worker` (it uses `scripts`), and
@@ -122,7 +142,8 @@ Profile in brackets: `all` always runs; `screenreader` and `lowvision` follow th
 
 ## Changes go through OpenSpec
 Behavior is specified in `openspec/specs/<capability>/spec.md` (page-safety, activation,
-page-language, image-alt, control-names, form-labels, text-contrast, focus-visibility, extension-ui).
+page-language, image-alt, control-names, form-labels, text-contrast, focus-visibility, extension-ui,
+data-sharing).
 Those specs are the source of truth for what the extension does; project context and
 per-artifact rules live in `openspec/config.yaml`.
 
