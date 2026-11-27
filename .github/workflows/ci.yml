@@ -21,6 +21,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Lint (ESLint incl. reversibility rule, web-ext)
@@ -29,6 +31,8 @@ jobs:
         run: npm test
       - name: Privacy gate (what may be sent off the device)
         run: npm run test:privacy
+      - name: Backend (describe API, image fetching, model output, cache)
+        run: npm test --prefix backend
       - name: End-to-end (real unpacked extension)
         run: npm run test:e2e
       - name: OpenSpec specs and changes are valid

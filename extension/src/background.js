@@ -67,3 +67,137 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     chrome.action.setTitle({ tabId, title: msg.active ? TITLE_ON : TITLE_OFF }),
   ]).catch(() => {});
 });
+
+// ---------------------------------------------------------------------------
+// AI descriptions relay. The page (ai-images fixer) never talks to the backend:
+// it asks here, and this is the authoritative privacy check, because sender.url
+// is reported by the browser and can't be faked by page scripts.
+// ---------------------------------------------------------------------------
+
+/** Backend address for release builds. Empty until change 3 deploys the backend. */
+const BACKEND_URL = '';
+const DATA_COLLECTION = ['websiteContent', 'browsingActivity'];
+const MAX_ITEMS = 8;
+const MAX_CONTEXT = 300;
+const MAX_URL = 2048; // the backend rejects longer ones (and the whole batch with them)
+const TIMEOUT_MS = 15000; // the backend answers within ~11 s (5 s image fetch + 6 s model)
+const NO_RESULT = Object.freeze({ alt: null, decorative: false });
+
+const isFirefox = typeof chrome.runtime.getBrowserInfo === 'function';
+
+/**
+ * Backend address: BACKEND_URL, or in an unpacked (development) install the
+ * storage.local devBackendUrl override (e2e tests, `wrangler dev`). '' = AI unavailable.
+ */
+async function backendUrl() {
+  if (BACKEND_URL) return BACKEND_URL;
+  try {
+    const self = await chrome.management.getSelf();
+    if (self.installType !== 'development') return '';
+    const { devBackendUrl } = await chrome.storage.local.get({ devBackendUrl: '' });
+    return typeof devBackendUrl === 'string' && /^https?:\/\//.test(devBackendUrl) ? devBackendUrl.replace(/\/+$/, '') : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+/** Firefox asks for data-collection consent when the user opts in; it can be revoked later. */
+async function hasConsent() {
+  if (!isFirefox) return true;
+  try {
+    return await chrome.permissions.contains({ data_collection: DATA_COLLECTION });
+  } catch (_) {
+    return false;
+  }
+}
+
+// Small in-memory cache of successful descriptions, by image URL (most recent last).
+const recent = new Map();
+const RECENT_MAX = 500;
+const remember = (url, value) => {
+  recent.delete(url);
+  recent.set(url, value);
+  if (recent.size > RECENT_MAX) recent.delete(recent.keys().next().value);
+};
+
+async function describeForPage(items, sender) {
+  const empty = items.map(() => NO_RESULT);
+  const P = globalThis.Dostupno?.privacy;
+  if (!P) return empty;
+  const settings = { ...DEFAULTS, ...(await chrome.storage.sync.get(DEFAULTS)) };
+  // AI descriptions belong to the screen reader profile; nothing is sent without it.
+  if (settings.profiles?.screenreader !== true) return empty;
+  if (!P.mayShareFrom(sender.url, settings) || !(await hasConsent())) return empty;
+  const base = await backendUrl();
+  if (!base) return empty;
+
+  const results = [...empty];
+  const toSend = [];
+  items.forEach((item, i) => {
+    const url = item?.imageUrl;
+    if (typeof url !== 'string' || url.length > MAX_URL || !P.mayShareUrl(url, settings)) return;
+    if (recent.has(url)) {
+      results[i] = recent.get(url);
+      return;
+    }
+    const context = typeof item.context === 'string' ? item.context.slice(0, MAX_CONTEXT) : '';
+    toSend.push({ i, imageUrl: url, context });
+  });
+  if (!toSend.length) return results;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(`${base}/v1/describe`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // Only the page host, the image URLs and short nearby text. Nothing else.
+      body: JSON.stringify({
+        pageHost: P.pageHost(sender.url),
+        lang: 'uk',
+        items: toSend.map(({ imageUrl, context }) => ({ imageUrl, context })),
+      }),
+      signal: controller.signal,
+      credentials: 'omit',
+    });
+    if (!response.ok) return results;
+    const data = await response.json();
+    const answers = Array.isArray(data?.results) ? data.results : [];
+    toSend.forEach(({ i, imageUrl }, k) => {
+      const a = answers[k];
+      if (!a || typeof a.alt !== 'string') return;
+      const value = Object.freeze({ alt: a.alt, decorative: a.decorative === true });
+      results[i] = value;
+      remember(imageUrl, value);
+    });
+    return results;
+  } catch (_) {
+    return results; // unreachable, timeout, bad JSON: no descriptions
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) return undefined;
+
+  if (msg?.type === 'dostupno:ai-available') {
+    backendUrl().then((url) => sendResponse({ available: !!url }), () => sendResponse({ available: false }));
+    return true;
+  }
+
+  if (msg?.type === 'dostupno:describe') {
+    // Only from a page's top frame (content scripts run there only).
+    const items = Array.isArray(msg.items) ? msg.items.slice(0, MAX_ITEMS) : [];
+    if (sender.tab?.id === undefined || sender.frameId !== 0 || !items.length) {
+      sendResponse({ results: items.map(() => NO_RESULT) });
+      return undefined;
+    }
+    describeForPage(items, sender).then(
+      (results) => sendResponse({ results }),
+      () => sendResponse({ results: items.map(() => NO_RESULT) }),
+    );
+    return true; // answer asynchronously
+  }
+  return undefined;
+});

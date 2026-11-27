@@ -49,7 +49,7 @@
   3. The relabel could shadow a `<label>` the site added after the first run. Fix: remove our label, then stop if the field has a name.
   4. The audit recorder credits deferred attribute changes to `forms`: kept and commented, test tooling only.
   The delta spec, proposal and design are updated to match.
-- [ ] 4.4 Manual check for the user: on comfy.ua with VoiceOver (Cmd+F5), Tab to the header search field. It's announced as "Пошук, edit text" (or similar) on several reloads, never as an example word. Turn Доступно off with Option+Shift+D and back on. The field is announced the same way, and the placeholder keeps animating. Record the result in the PR description.
+- [x] 4.4 Manual check for the user: on comfy.ua with VoiceOver (Cmd+F5), Tab to the header search field. It's announced as "Пошук, edit text" (or similar) on several reloads, never as an example word. Turn Доступно off with Option+Shift+D and back on. The field is announced the same way, and the placeholder keeps animating. Record the result in the PR description.
 
 ## Workflow follow-up
 

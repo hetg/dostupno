@@ -11,6 +11,9 @@ const DEFAULTS = {
 
 const $ = (id) => document.getElementById(id);
 const isWelcome = new URLSearchParams(location.search).has('welcome');
+const isFirefox = typeof chrome.runtime.getBrowserInfo === 'function';
+// Firefox asks for the browser's data-collection consent before AI descriptions are on.
+const DATA_COLLECTION = ['websiteContent', 'browsingActivity'];
 
 const plural = (n, one, few, many) => {
   const m10 = n % 10, m100 = n % 100;
@@ -61,6 +64,70 @@ async function renderStatus(tab) {
   }
 }
 
+/** Is a backend configured? Without one, no AI controls are shown at all. */
+async function aiAvailable() {
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'dostupno:ai-available' });
+    return r?.available === true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Per-site sending control: a checkbox, or a note when the site is private anyway. */
+function renderAiSite(tab, host, settings) {
+  const box = $('ai-site');
+  box.hidden = !(settings.ai && host);
+  if (box.hidden) return;
+  const privateAnyway = !window.Dostupno?.privacy?.mayShareFrom(tab.url, { ai: true });
+  $('ai-site-choice').hidden = privateAnyway;
+  $('ai-site-private').hidden = !privateAnyway;
+  $('ai-site-host').textContent = host;
+  $('ai-site-toggle').checked = settings.privateSites.includes(host);
+}
+
+async function initAi(tab, host) {
+  if (!(await aiAvailable())) return; // release build before deploy: no trace of AI
+  $('ai-section').hidden = false;
+  const toggle = $('ai-toggle');
+  const settings = await chrome.storage.sync.get(DEFAULTS);
+  // In Firefox, ai may be synced from another browser without this browser's consent:
+  // nothing is sent then, so don't show it as on.
+  const consented = !isFirefox || await chrome.permissions
+    .contains({ data_collection: DATA_COLLECTION }).catch(() => false);
+  settings.ai = settings.ai === true && consented;
+  toggle.checked = settings.ai;
+  if (!isWelcome) renderAiSite(tab, host, settings);
+
+  toggle.addEventListener('change', async () => {
+    if (toggle.checked && isFirefox) {
+      // Must be the first call in the handler: Firefox needs the user's click for the prompt.
+      let request;
+      try {
+        request = chrome.permissions.request({ data_collection: DATA_COLLECTION });
+      } catch (_) {
+        request = Promise.resolve(false);
+      }
+      const granted = await Promise.resolve(request).catch(() => false);
+      if (!granted) {
+        toggle.checked = false;
+        return;
+      }
+    }
+    await chrome.storage.sync.set({ ai: toggle.checked });
+    if (isWelcome) $('welcome-done').hidden = false;
+    else renderAiSite(tab, host, await chrome.storage.sync.get(DEFAULTS));
+  });
+
+  $('ai-site-toggle').addEventListener('change', async () => {
+    const { privateSites } = await chrome.storage.sync.get(DEFAULTS);
+    const next = $('ai-site-toggle').checked
+      ? [...new Set([...privateSites, host])]
+      : privateSites.filter((h) => h !== host);
+    await chrome.storage.sync.set({ privateSites: next });
+  });
+}
+
 async function init() {
   const settings = await chrome.storage.sync.get(DEFAULTS);
 
@@ -90,8 +157,11 @@ async function init() {
     $('welcome-intro').hidden = false;
     $('site-section').hidden = true;
     form.elements.screenreader.focus();
+    await initAi(null, null);
     return;
   }
+
+  initAi(tab, host).catch(() => {}); // don't hold up the site switch for the background round trip
 
   // Site toggle
   if (!host) {

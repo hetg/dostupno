@@ -13,7 +13,7 @@
     profiles: { screenreader: true, lowvision: false },
     disabledSites: [],
     ai: false, // AI descriptions are opt-in (see privacy.js)
-    privateSites: [], // never send anything from these sites; fixing is unaffected
+    privateSites: [], // never send anything from these sites (local fixes still run)
   };
 
   let settings = DEFAULTS;
@@ -27,7 +27,8 @@
 
   const runFixers = (root, initial) => {
     const profiles = activeProfiles();
-    const ctx = { initial, profiles };
+    // Fixers get a frozen copy of the settings (the ai-images fixer needs ai/privateSites).
+    const ctx = { initial, profiles, settings: Object.freeze({ ...settings }) };
     const started = performance.now();
     for (const fixer of D.fixers) {
       if (!fixer.profiles.some((p) => profiles.has(p))) continue;
@@ -91,6 +92,8 @@
   };
 
   const shouldRun = () => settings.enabled && !settings.disabledSites.includes(host);
+  /** May this page send anything (AI)? Same gate the ai-images fixer and background use. */
+  const mayShareHere = () => !!D.privacy?.mayShareFrom(location.href, settings);
 
   /**
    * Tell the background whether Доступно runs on this page, for the toolbar
@@ -128,9 +131,17 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return;
     const wasRunning = shouldRun();
-    for (const [key, { newValue }] of Object.entries(changes)) settings[key] = newValue;
+    const wasSharing = mayShareHere();
+    settings = { ...settings };
+    for (const [key, { newValue }] of Object.entries(changes)) settings[key] = newValue ?? DEFAULTS[key];
     const nowRunning = shouldRun();
-    if (changes.profiles) apply(); // profiles changed: re-run everything from scratch
+    // Re-run from scratch when profiles change, when AI is turned on or off, or when the
+    // user's exclusions change whether this page may send: AI descriptions appear or go.
+    // AI descriptions belong to the screen reader profile: without it nothing changes (and a
+    // low-vision user doesn't see contrast fixes flicker for nothing).
+    const sendingChanged = settings.profiles?.screenreader === true &&
+      (changes.ai || (changes.privateSites && wasSharing !== mayShareHere()));
+    if (changes.profiles || sendingChanged) apply();
     else if (wasRunning !== nowRunning) nowRunning ? activate() : deactivate();
     if (wasRunning !== nowRunning) {
       D.announce(nowRunning ? 'Доступно увімкнено на цьому сайті' : 'Доступно вимкнено на цьому сайті');

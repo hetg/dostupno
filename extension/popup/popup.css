@@ -32,6 +32,9 @@
 
 * { box-sizing: border-box; }
 
+/* `hidden` must win over component display rules (e.g. .choice { display: flex }). */
+[hidden] { display: none !important; }
+
 html { font-size: 112.5%; } /* 18px base; respects the browser's own zoom */
 
 body {
@@ -130,6 +133,8 @@ legend {
 }
 .choice strong { display: block; font-size: 1.05rem; }
 .choice .detail { display: block; color: var(--muted); font-size: 0.95rem; }
+.choice .host { overflow-wrap: anywhere; }
+.ai-site { margin-top: 0.6rem; }
 
 :focus-visible {
   outline: 3px solid var(--line);

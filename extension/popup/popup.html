@@ -42,10 +42,33 @@
       </fieldset>
     </form>
 
+    <!-- Shown only when a backend address is configured (dostupno:ai-available). -->
+    <fieldset id="ai-section" hidden>
+      <legend>Описи зображень</legend>
+      <label class="choice">
+        <input type="checkbox" id="ai-toggle" aria-labelledby="ai-label" aria-describedby="ai-detail">
+        <span>
+          <strong id="ai-label">Описувати зображення за допомогою ШІ</strong>
+          <span class="detail" id="ai-detail">Надсилає на сервер Доступно адресу зображення й короткий текст поруч. Ніколи — з банків, пошти, Дії, медичних та інших приватних сайтів.</span>
+        </span>
+      </label>
+      <div id="ai-site" class="ai-site" hidden>
+        <label class="choice" id="ai-site-choice">
+          <input type="checkbox" id="ai-site-toggle" aria-labelledby="ai-site-label" aria-describedby="ai-site-host">
+          <span>
+            <strong id="ai-site-label">Не надсилати нічого з цього сайту</strong>
+            <span class="detail host" id="ai-site-host"></span>
+          </span>
+        </label>
+        <p id="ai-site-private" class="hint" hidden>З цього сайту нічого не надсилається: він приватний.</p>
+      </div>
+    </fieldset>
+
     <p id="welcome-done" class="hint" hidden>
       Готово. Доступно вже працює на всіх сайтах. Цю вкладку можна закрити.
     </p>
   </main>
+  <script src="../src/privacy.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
