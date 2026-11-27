@@ -5,6 +5,8 @@ const DEFAULTS = {
   enabled: true,
   profiles: { screenreader: true, lowvision: false },
   disabledSites: [],
+  ai: false,
+  privateSites: [],
 };
 
 const $ = (id) => document.getElementById(id);

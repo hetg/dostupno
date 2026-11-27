@@ -16,7 +16,11 @@
 - [ ] Endpoint: name for an unnamed control (icon/svg + context)
 - [ ] Shared cache keyed by image URL hash / site + selector, so repeat visits are instant and cheap
 - [ ] Extension: send only elements in or near the viewport; batch requests
-- [ ] Privacy: built-in exclusion list (banks, Diia, mail, medical), user exclusions, no full-page uploads
+- [x] Privacy gate: built-in exclusion list (banks, Diia, mail, medical, …), non-public hosts, signed URLs,
+      pages with password/card fields, user exclusions (`privateSites`), AI opt-in (`ai`, off by default)
+      (`extension/src/privacy.js`; popup controls ship with the backend)
+- [ ] Popup: AI opt-in toggle and "don't send from this site" switch
+- [ ] No full-page uploads: only item URLs, the page host and short context reach the backend
 - [ ] Update `data_collection_permissions` in manifest.json (now `none`) once image URLs are sent to the backend
 - [ ] Rate limiting per install
 
@@ -29,6 +33,9 @@
 ## Weekend 4 — real users
 - [ ] Test sessions with blind and low-vision users (Access Lab, УТОС)
 - [ ] Firefox for Android build and test with TalkBack
+- [ ] Desktop Firefox: load via `about:debugging`, check the background console has no errors and
+      `Dostupno.privacy.mayShareFrom('https://privatbank.ua/', {ai:true, privateSites:[]})` is `false`;
+      on any web page, the content-script console has `Dostupno.privacy` too (and no errors)
 - [ ] Publish to Chrome Web Store and Firefox Add-ons
 
 ## Later

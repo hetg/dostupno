@@ -5,3 +5,7 @@ node_modules/
 .idea/
 test/audit-report/
 test/e2e-report/
+
+# Local secrets (Cloudflare Wrangler reads backend/.dev.vars in `wrangler dev`)
+.dev.vars
+.dev.vars.*

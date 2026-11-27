@@ -57,6 +57,24 @@ try {
   const extId = worker.url().split('/')[2];
   check('extension loads and its service worker starts', !!extId, worker.url());
 
+  // The privacy gate is loaded in the service worker (importScripts) and fails closed.
+  const gate = await worker.evaluate(() => {
+    const P = globalThis.Dostupno?.privacy;
+    if (typeof P?.mayShareFrom !== 'function') return null;
+    return {
+      bank: P.mayShareFrom('https://privatbank.ua/', { ai: true, privateSites: [] }),
+      publicOptedIn: P.mayShareFrom('https://www.pravda.com.ua/', { ai: true, privateSites: [] }),
+      defaults: P.mayShareFrom('https://www.pravda.com.ua/', { ai: false, privateSites: [] }),
+    };
+  });
+  check('privacy gate loads in the service worker', gate !== null);
+  check('privacy gate: bank never shares, defaults share nothing',
+    gate?.bank === false && gate?.defaults === false && gate?.publicOptedIn === true, JSON.stringify(gate));
+  // Read what is really stored (no defaults filled in): nothing may have turned AI on.
+  const stored = await worker.evaluate(() => chrome.storage.sync.get(null));
+  check('fresh install: AI is not turned on and no sites are excluded',
+    stored.ai !== true && (stored.privateSites === undefined || stored.privateSites.length === 0), JSON.stringify(stored));
+
   // The welcome tab opens on install; it's checked below with the popup.
   const page = await context.newPage();
   const pageErrors = [];
@@ -114,6 +132,14 @@ try {
   await page.waitForTimeout(500);
   check('turning the site back on fixes the page again', (await page.getAttribute('#logo-link', 'aria-label')) === 'Головна сторінка');
   check('toolbar: tooltip says on again', (await titleOf(page)) === ON && (await titleOf(page2)) === ON, `${await titleOf(page)} / ${await titleOf(page2)}`);
+
+  // Excluding the site from sending (privateSites) is not turning it off: fixes and icon stay on.
+  await worker.evaluate((host) => chrome.storage.sync.set({ ai: true, privateSites: [host] }), '127.0.0.1');
+  await page.waitForTimeout(500);
+  check('excluded from sending only: page stays fixed', (await page.getAttribute('#logo-link', 'aria-label')) === 'Головна сторінка');
+  check('excluded from sending only: tooltip still says on', (await titleOf(page)) === ON, await titleOf(page));
+  await worker.evaluate(() => chrome.storage.sync.remove(['ai', 'privateSites']));
+  await page.waitForTimeout(300);
 
   // Navigating an "off" tab to a page where Доступно can't run resets the icon.
   await worker.evaluate((host) => chrome.storage.sync.set({ disabledSites: [host] }), '127.0.0.1');

@@ -18,6 +18,7 @@
   "background": {
     "service_worker": "src/background.js",
     "scripts": [
+      "src/privacy.js",
       "src/background.js"
     ]
   },
@@ -46,6 +47,7 @@
       "all_frames": false,
       "js": [
         "src/core.js",
+        "src/privacy.js",
         "src/fixers/lang.js",
         "src/fixers/images.js",
         "src/fixers/names.js",
