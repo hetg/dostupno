@@ -6,7 +6,7 @@ Controls when Доступно runs: globally, per site, and per user profile, w
 ## Requirements
 
 ### Requirement: Runs on every site by default
-Доступно SHALL run on every web page unless the user has turned it off for that site. Settings are stored in synced browser storage as `{ enabled, profiles: { screenreader, lowvision }, disabledSites }`, defaulting to enabled, screen reader profile on, low-vision profile off, and no disabled sites.
+Доступно SHALL run on every web page unless the user has turned it off for that site. Settings are stored in synced browser storage as `{ enabled, profiles: { screenreader, lowvision }, disabledSites, ai, privateSites }`, defaulting to enabled, screen reader profile on, low-vision profile off, no disabled sites, `ai: false` and `privateSites: []`.
 
 #### Scenario: Fresh install
 - **WHEN** the user opens any website after installing the extension
@@ -16,6 +16,15 @@ Controls when Доступно runs: globally, per site, and per user profile, w
 #### Scenario: Site turned off
 - **WHEN** a site's hostname is in `disabledSites`
 - **THEN** no fixer runs on pages of that site
+
+#### Scenario: Site excluded from sending only
+- **WHEN** a site's hostname is in `privateSites` but not in `disabledSites`
+- **THEN** fixers run on pages of that site as usual
+- **AND** the toolbar icon shows Доступно as on for that site
+
+#### Scenario: AI setting does not change fixing
+- **WHEN** the user's `ai` setting changes from `false` to `true` or back
+- **THEN** the same fixers run on open pages as before, and nothing is reverted or re-applied
 
 ### Requirement: Per-site toggle with keyboard shortcut
 The user SHALL be able to turn Доступно off and on for the current site with **Alt+Shift+D** or from the popup, without reloading the page.
