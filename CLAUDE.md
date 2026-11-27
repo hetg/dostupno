@@ -14,7 +14,7 @@ Users are **people with disabilities, not developers**:
 1. **Never make a page worse.** When unsure, do nothing. A wrong label is worse than none.
 2. **Never override what the site already did right.** Only fill in what's missing or broken.
 3. **Everything is reversible.** All DOM changes go through `Dostupno.changes`
-   (`setAttr`, `setStyle`, `addStyle`) so `revertAll()` can undo them instantly.
+   (`setAttr`, `removeAttr`, `setStyle`, `addStyle`) so `revertAll()` can undo them instantly.
    Never modify the DOM directly in a fixer.
 4. **Silent by default.** No popups or announcements about fixes. Only on/off toggles are announced.
 5. **The extension's own UI must be fully accessible**: keyboard, screen reader, high contrast, 200% zoom.
@@ -67,7 +67,7 @@ Dostupno.registerFixer({
     // ctx.initial: true on the first run for the page
     // Use Dostupno.queryAll(root, selector) (includes root itself)
     // Use Dostupno.once(el, id) to skip elements already handled
-    // Change things ONLY via Dostupno.changes.*
+    // Change things ONLY via Dostupno.changes.* (setAttr, removeAttr, setStyle, addStyle)
   },
   stop() {},                  // optional: disconnect observers/timers. Called on toggle off,
                               // before revertAll(); nothing may touch the page after it.
@@ -105,7 +105,9 @@ Profile in brackets: `all` always runs; `screenreader` and `lowvision` follow th
 - `names` (screenreader): icon-only buttons/links get Ukrainian names from title, symbols, a text link to the same
   URL (card headline), href domain, icon class names. "close-search" → "Закрити пошук", not "Пошук".
 - `forms` (screenreader): unlabeled fields get aria-label from placeholder (unless it's an example like
-  `name@mail.com` or a mask like `+38 (0__)`), title, nearby text, or name/id/type.
+  `name@mail.com` or a mask like `+38 (0__)`), title, nearby text, or a hint in name, id or type.
+  A placeholder the site changes (typed-out example queries, as on comfy.ua) stops counting: the
+  field is relabeled from the other sources, or unlabeled and flagged for AI.
 - `contrast` (lowvision): reaches WCAG AA (4.5:1 / 3:1 large) with the smallest change.
   Only checks text on screen (IntersectionObserver), reads the real background via
   `elementsFromPoint`, keeps polarity (light text never becomes dark; if white isn't enough,

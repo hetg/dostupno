@@ -201,6 +201,70 @@ check('hidden text untouched', r.hiddenPale === 'rgb(181, 181, 181)', r.hiddenPa
 check('off-screen text untouched until scrolled to', farBefore === 'rgb(181, 181, 181)', farBefore);
 check('off-screen text fixed once seen', r.far !== 'rgb(181, 181, 181)', r.far);
 
+// Animated placeholder (comfy.ua): once the site changes it, it no longer counts as a label.
+const typed = () =>
+  page.evaluate(() => {
+    const field = (sel) => {
+      const el = document.querySelector(sel);
+      return { label: el.getAttribute('aria-label'), ai: el.getAttribute('data-dostupno-needs-ai'), marked: el.hasAttribute('data-dostupno') };
+    };
+    return { steps: window.__typedSteps, search: field('#typed-search'), unknown: field('#typed-unknown'), labelled: field('#typed-labelled') };
+  });
+const t1 = await typed();
+await page.waitForTimeout(300); // a few more animation steps
+const t2 = await typed();
+check('animated placeholder: labeled from the name hint, not an example word', t1.search.label === 'Пошук' && t2.search.label === 'Пошук', JSON.stringify([t1.search, t2.search]));
+check('animated placeholder, no other source: no label, marked for AI', t2.unknown.label === null && t2.unknown.ai === 'label', JSON.stringify(t2.unknown));
+check('animated placeholder on a site-labelled field: untouched', t2.labelled.label === 'Пошук товарів' && !t2.labelled.marked && t2.labelled.ai === null, JSON.stringify(t2.labelled));
+check('animated placeholder keeps animating', t2.steps > t1.steps, `${t1.steps} → ${t2.steps}`);
+
+// A placeholder cleared on focus and put back on blur is not an animation.
+const focusLabel = async () => page.evaluate(() => {
+  const el = document.querySelector('#focus-clear');
+  return { label: el.getAttribute('aria-label'), ai: el.getAttribute('data-dostupno-needs-ai'), ph: el.getAttribute('placeholder') };
+});
+await page.focus('#focus-clear');
+await page.waitForTimeout(50);
+const onFocus = await focusLabel();
+await page.evaluate(() => document.activeElement.blur());
+await page.waitForTimeout(50);
+const onBlur = await focusLabel();
+check('placeholder cleared on focus: label kept while focused', onFocus.ph === '' && onFocus.label === 'Пошук по сайту' && onFocus.ai === null, JSON.stringify(onFocus));
+check('placeholder put back on blur: label kept', onBlur.label === 'Пошук по сайту' && onBlur.ai === null, JSON.stringify(onBlur));
+
+// Name/id hints: only where they fit the field.
+const hint = await page.evaluate(() => Object.fromEntries(['plain-q', 'qty', 'name-field'].map((id) => {
+  const el = document.getElementById(id);
+  return [id, { label: el.getAttribute('aria-label'), ai: el.getAttribute('data-dostupno-needs-ai') }];
+})));
+check('text field named q labeled from the hint', hint['plain-q'].label === 'Пошук', JSON.stringify(hint['plain-q']));
+check('number field named q not labeled as search', hint.qty.label === null && hint.qty.ai === 'label', JSON.stringify(hint.qty));
+check('field named "name" not labeled as first name', hint['name-field'].label === null && hint['name-field'].ai === 'label', JSON.stringify(hint['name-field']));
+
+// The site names a field itself after we labeled it from its placeholder: leave it to the site.
+await page.evaluate(() => {
+  const div = document.createElement('div');
+  div.id = 'late-field';
+  div.innerHTML = '<input type="text" name="zz" id="late-input" placeholder="Знайти книгу">';
+  document.body.append(div);
+});
+await page.waitForTimeout(600); // the content script handles new subtrees after 300 ms
+const lateFirst = await page.evaluate(() => document.getElementById('late-input').getAttribute('aria-label'));
+await page.evaluate(() => {
+  const label = document.createElement('label');
+  label.htmlFor = 'late-input';
+  label.textContent = 'Назва книги';
+  document.getElementById('late-field').prepend(label);
+  document.getElementById('late-input').setAttribute('placeholder', 'Кобзар');
+});
+await page.waitForTimeout(50);
+const lateAfter = await page.evaluate(() => {
+  const el = document.getElementById('late-input');
+  return { label: el.getAttribute('aria-label'), ai: el.getAttribute('data-dostupno-needs-ai') };
+});
+check('late field labeled from its placeholder first', lateFirst === 'Знайти книгу', lateFirst);
+check('placeholder changed after the site added a <label>: our label removed, no AI marker', lateAfter.label === null && lateAfter.ai === null, JSON.stringify(lateAfter));
+
 // Privacy settings never change fixing. The fixture is a file: page, which the privacy
 // gate treats as non-public (never shares), so the fixes above already show that
 // private pages keep their local fixes. Opting in to AI or changing the sites excluded
@@ -213,6 +277,9 @@ const privacy = await page.evaluate(async () => {
     marked: document.querySelectorAll('[data-dostupno]').length,
     logo: document.querySelector('#logo-link').getAttribute('aria-label'),
   });
+  // Let content added by earlier checks finish processing (batched after 300 ms), so only
+  // reactions to the settings below are counted.
+  await new Promise((r) => setTimeout(r, 400));
   // Spy on reverts and fixer runs, so a re-run that happens to give the same result still fails.
   let reverts = 0;
   let runs = 0;
@@ -255,6 +322,10 @@ const after = await page.evaluate(() => {
     pale: getComputedStyle(document.querySelector('.pale')).color,
     greenBg: getComputedStyle(document.querySelector('.green-btn')).backgroundColor,
     needsAi: document.querySelectorAll('[data-dostupno-needs-ai]').length,
+    // Attributes besides the site's own type/name/id/placeholder, per animated field.
+    typed: [...document.querySelectorAll('#typed input')].map((el) =>
+      [...el.attributes].filter((a) => !['type', 'name', 'id', 'placeholder'].includes(a.name)).map((a) => `${a.name}=${a.value}`).join(' ')
+    ),
   };
 });
 check('revert: change log empty', after.changes === 0, after.changes);
@@ -264,15 +335,18 @@ check('revert: styles removed', after.styles === 0, after.styles);
 check('revert: original color back', after.pale === 'rgb(181, 181, 181)', after.pale);
 check('revert: button background back', after.greenBg === 'rgb(0, 160, 70)', after.greenBg);
 check('revert: AI markers removed', after.needsAi === 0, after.needsAi);
+check('revert: animated-placeholder fields back to their own attributes', JSON.stringify(after.typed) === JSON.stringify(['', '', 'aria-label=Пошук товарів']), JSON.stringify(after.typed));
 
 // A contrast check scheduled before turning off must not touch the reverted page.
 await page.evaluate(() => document.getElementById('far').scrollIntoView());
 await page.waitForTimeout(500);
 const late = await page.evaluate(() => ({
+  steps: window.__typedSteps,
   changes: window.Dostupno.changes.count(),
   far: getComputedStyle(document.getElementById('far')).color,
 }));
 check('after revert: no new changes', late.changes === 0 && late.far === 'rgb(181, 181, 181)', JSON.stringify(late));
+check('after revert: placeholder still animates, nothing relabeled', late.steps > t2.steps && late.changes === 0, JSON.stringify(late));
 
 console.log(`\n${r.changes} changes applied before revert.\n`);
 // --- Screen reader profile off: only the page-language fix may touch the page. ---
@@ -321,9 +395,40 @@ await live.waitForTimeout(300);
 const liveOn = await liveAx.axNames();
 check('turning the profile back on restores names live', liveOn.logo === 'Головна сторінка' && liveOn.burger === 'Меню', JSON.stringify({ logo: liveOn.logo, burger: liveOn.burger }));
 check('turning the profile back on restores form labels live', liveOn.email === 'Електронна пошта', liveOn.email);
+const liveTyped = await live.evaluate(() => document.querySelector('#typed-search').getAttribute('aria-label'));
+check('turning the profile back on: animated placeholder field labeled from its hint again', liveTyped === 'Пошук', liveTyped);
 const figureAlt = await live.evaluate(() => document.querySelector('figure img').getAttribute('alt'));
 check('turning the profile back on restores alt text live', figureAlt === 'Відкриття нового укриття у школі №5', figureAlt);
 await live.close();
+
+// --- Change log: removeAttr is undone like setAttr, newest first. ---
+const unit = await openFixture({ enabled: false });
+const log = await unit.evaluate(() => {
+  const C = window.Dostupno.changes;
+  const had = document.createElement('div');
+  had.setAttribute('title', 'site');
+  const none = document.createElement('div');
+  document.body.append(had, none);
+  C.setAttr(had, 'title', 'a');
+  C.removeAttr(had, 'title');
+  C.setAttr(none, 'aria-label', 'блен');
+  C.setAttr(none, 'aria-label', 'Пошук');
+  C.removeAttr(none, 'aria-label');
+  C.removeAttr(none, 'aria-label'); // already absent: nothing to record
+  const mid = { had: had.hasAttribute('title'), none: none.hasAttribute('aria-label'), count: C.count() };
+  C.revertAll();
+  return {
+    mid,
+    title: had.getAttribute('title'),
+    label: none.getAttribute('aria-label'),
+    marked: had.hasAttribute('data-dostupno') || none.hasAttribute('data-dostupno'),
+    count: C.count(),
+  };
+});
+check('removeAttr removes and records once', !log.mid.had && !log.mid.none && log.mid.count === 5, JSON.stringify(log.mid));
+check('revert after removeAttr restores the site value', log.title === 'site', log.title);
+check('revert after removeAttr leaves an added attribute absent', log.label === null && !log.marked && log.count === 0, JSON.stringify(log));
+await unit.close();
 
 console.log(`\n${failed ? failed + ' check(s) failed' : 'All checks passed.'}`);
 await browser.close();
