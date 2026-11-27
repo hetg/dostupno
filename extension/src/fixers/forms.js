@@ -10,9 +10,9 @@
   const NAME_HINTS = [
     [/e-?mail|пошт/i, 'Електронна пошта'],
     [/phone|tel|телефон/i, 'Телефон'],
-    [/^(q|s|search|query|keyword)s?$/i, 'Пошук'],
+    [/^(q|s|search|query|keyword)s?$/i, 'Пошук', ['text', 'search']], // not a number field named q
     [/pass(word)?|пароль/i, 'Пароль'],
-    [/first.?name|^name$|ім.?я/i, "Ім'я"],
+    [/first.?name|ім.?я/i, "Ім'я"], // not plain "name": often a product or company name
     [/last.?name|surname|прізвище/i, 'Прізвище'],
     [/city|місто/i, 'Місто'],
     [/address|адрес/i, 'Адреса'],
@@ -45,6 +45,68 @@
     return t && t.length <= 60 ? t : null;
   };
 
+  const tidy = (s) => s.replace(/[:*]\s*$/, '').trim();
+
+  /**
+   * Label for a field from the sources above, best first: { name, fromPlaceholder }.
+   * name is '' when nothing usable was found.
+   * usePlaceholder: false once the site has changed the field's placeholder.
+   */
+  const labelFor = (el, { usePlaceholder }) => {
+    const placeholder = usePlaceholder ? D.clean(el.getAttribute('placeholder')) : '';
+    if (placeholder && !D.looksLikeExample(placeholder) && tidy(placeholder))
+      return { name: tidy(placeholder), fromPlaceholder: true };
+
+    let name = tidy(D.clean(el.getAttribute('title')) || nearbyText(el) || '');
+    if (!name) {
+      // Each of name, id and type on its own (the search hint is anchored); some hints
+      // only fit certain field types.
+      const hints = [el.getAttribute('name'), el.id, el.type].filter(Boolean);
+      const hint = NAME_HINTS.find(([re, , types]) => (!types || types.includes(el.type)) && hints.some((h) => re.test(h)));
+      name = hint ? hint[1] : '';
+    }
+    return { name, fromPlaceholder: false };
+  };
+
+  /**
+   * Some sites animate the placeholder (typing example queries letter by letter),
+   * so a label read from it is a random fragment ("блен"). Fields labeled from
+   * their placeholder are watched; the first time the site changes it to a
+   * different, non-empty text, the placeholder stops counting for that field and
+   * the label comes from the other sources, or is removed when there are none.
+   * Clearing it (on focus, a common pattern) or restoring it doesn't count.
+   */
+  let observer = null;
+  let watched = new WeakMap(); // field -> { label, placeholder } as Доступно labeled it
+  let untrusted = new WeakSet(); // fields whose placeholder the site changed
+
+  const onPlaceholderChange = (mutations) => {
+    for (const { target: el } of mutations) {
+      const seen = watched.get(el);
+      if (!seen || untrusted.has(el)) continue;
+      const now = el.getAttribute('placeholder');
+      if (now === seen.placeholder || !D.clean(now)) continue; // restored, or cleared on focus
+      untrusted.add(el);
+      try {
+        // The site replaced or removed our label since: it's theirs now, leave it.
+        if (el.getAttribute('aria-label') !== seen.label) continue;
+        D.changes.removeAttr(el, 'aria-label');
+        if (D.accessibleName(el)) continue; // the site named the field since (<label>, aria-labelledby)
+        const { name } = labelFor(el, { usePlaceholder: false });
+        if (name) D.changes.setAttr(el, 'aria-label', name);
+        else el.setAttribute('data-dostupno-needs-ai', 'label');
+      } catch (err) {
+        console.warn('[Доступно] forms: relabel failed', err);
+      }
+    }
+  };
+
+  const watchPlaceholder = (el, label) => {
+    watched.set(el, { label, placeholder: el.getAttribute('placeholder') });
+    observer ??= new MutationObserver(onPlaceholderChange);
+    observer.observe(el, { attributes: true, attributeFilter: ['placeholder'] });
+  };
+
   D.registerFixer({
     id: 'forms',
     profiles: ['screenreader'],
@@ -56,20 +118,20 @@
         if (D.isHidden(el)) continue;
         if (D.accessibleName(el)) continue;
 
-        const placeholder = D.clean(el.getAttribute('placeholder'));
-        let name =
-          (placeholder && !D.looksLikeExample(placeholder) ? placeholder : '') ||
-          D.clean(el.getAttribute('title')) ||
-          nearbyText(el);
-
+        const { name, fromPlaceholder } = labelFor(el, { usePlaceholder: true });
         if (!name) {
-          const attr = (el.getAttribute('name') || '') + ' ' + (el.id || '') + ' ' + (el.type || '');
-          for (const [re, label] of NAME_HINTS) if (re.test(attr.trim()) || re.test(el.type)) { name = label; break; }
+          el.setAttribute('data-dostupno-needs-ai', 'label');
+          continue;
         }
-
-        if (name) D.changes.setAttr(el, 'aria-label', name.replace(/[:*]\s*$/, '').trim());
-        else el.setAttribute('data-dostupno-needs-ai', 'label');
+        D.changes.setAttr(el, 'aria-label', name);
+        if (fromPlaceholder) watchPlaceholder(el, name);
       }
+    },
+    stop() {
+      observer?.disconnect();
+      observer = null;
+      watched = new WeakMap();
+      untrusted = new WeakSet();
     },
   });
 })();
