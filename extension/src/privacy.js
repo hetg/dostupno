@@ -274,9 +274,22 @@
     return privateHost(host) || PAYMENT_FRAME_DOMAINS.some((d) => matchesDomain(host, d));
   };
 
+  /**
+   * Rendered on the page right now: laid out (not display:none, not inside [hidden] or a
+   * closed <details>) and not visibility:hidden. A closed login dialog doesn't make a news
+   * homepage private; the same field once the dialog opens does. Off-screen and transparent
+   * fields still count (being strict costs only a skipped request).
+   */
+  const isRendered = (el) => {
+    if (typeof el.getClientRects !== 'function' || el.getClientRects().length === 0) return false;
+    const view = el.ownerDocument?.defaultView;
+    const style = view ? view.getComputedStyle(el) : null;
+    return !style || (style.visibility !== 'hidden' && style.visibility !== 'collapse');
+  };
+
   const rootLooksPrivate = (root, depth) => {
     if (depth > 20) return true; // absurd nesting: assume the worst
-    if (root.querySelector(SECRET_FIELDS)) return true;
+    for (const field of root.querySelectorAll(SECRET_FIELDS)) if (isRendered(field)) return true;
     for (const frame of root.querySelectorAll('iframe')) {
       if (frame.src && frameIsPrivate(frame)) return true;
       // Same-origin frames (a login form in <iframe src="/login">) are checked like the page.
@@ -295,8 +308,9 @@
   };
 
   /**
-   * Does the page show something secret right now (password, one-time code, payment
-   * card, an embedded payment or private widget), including inside Shadow DOM?
+   * Does the page show something secret right now (a rendered password, one-time-code or
+   * payment-card field; an embedded payment or private widget), including inside Shadow DOM
+   * and same-origin frames? Hidden fields (a closed login dialog) don't count.
    * Walks the whole document, so run it right before sending (once per batch),
    * never while fixing. Errors count as private.
    */

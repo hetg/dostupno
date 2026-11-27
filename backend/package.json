@@ -1,0 +1,21 @@
+{
+  "name": "dostupno-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Доступно backend: AI alt text for public images (Cloudflare Worker).",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "test": "node --test --test-timeout=10000 \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.14.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.168.0"
+  }
+}

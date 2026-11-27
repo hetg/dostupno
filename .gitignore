@@ -9,3 +9,6 @@ test/e2e-report/
 # Local secrets (Cloudflare Wrangler reads backend/.dev.vars in `wrangler dev`)
 .dev.vars
 .dev.vars.*
+
+# Local Cloudflare Worker state (wrangler dev, local D1)
+.wrangler/

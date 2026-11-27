@@ -20,12 +20,17 @@ const chromeShim = `
     window.__initialStore || {}
   );
   window.__listeners = [];
+  window.__sent = [];
   window.chrome = {
     storage: {
       sync: { get: (d, cb) => cb({ ...d, ...window.__store }) },
       onChanged: { addListener: (fn) => window.__listeners.push(fn) },
     },
-    runtime: { onMessage: { addListener: () => {} } },
+    runtime: {
+      onMessage: { addListener: () => {} },
+      // Records what would leave the page; answers nothing useful.
+      sendMessage: (msg) => { window.__sent.push(msg); return Promise.resolve({ results: [] }); },
+    },
   };
   window.__setStore = (patch) => {
     const changes = {};
@@ -265,17 +270,21 @@ const lateAfter = await page.evaluate(() => {
 check('late field labeled from its placeholder first', lateFirst === 'Знайти книгу', lateFirst);
 check('placeholder changed after the site added a <label>: our label removed, no AI marker', lateAfter.label === null && lateAfter.ai === null, JSON.stringify(lateAfter));
 
-// Privacy settings never change fixing. The fixture is a file: page, which the privacy
-// gate treats as non-public (never shares), so the fixes above already show that
-// private pages keep their local fixes. Opting in to AI or changing the sites excluded
-// from sending must not revert or re-run anything. (A file: page has no hostname, so
-// "this site excluded" itself is covered by test/privacy.test.mjs.)
+// Privacy settings and fixing. The fixture is a file: page, which the privacy gate treats as
+// non-public (never shares), so the fixes above already show that private pages keep their
+// local fixes. Turning AI on or off re-applies the page (AI descriptions appear or go);
+// excluding a site that doesn't change this page's sending decision must not revert or
+// re-run anything. (A file: page has no hostname, so "this site excluded" itself is covered
+// by test/privacy.test.mjs.)
 const privacy = await page.evaluate(async () => {
   const D = window.Dostupno;
+  // Screen reader fixes only: contrast fixes are applied lazily as text scrolls into view,
+  // so their count right after a re-run is legitimately lower.
   const snapshot = () => ({
-    changes: D.changes.count(),
-    marked: document.querySelectorAll('[data-dostupno]').length,
     logo: document.querySelector('#logo-link').getAttribute('aria-label'),
+    alts: [...document.querySelectorAll('img[alt]')].map((i) => i.getAttribute('alt')).join('|'),
+    needsAi: document.querySelectorAll('[data-dostupno-needs-ai]').length,
+    labels: document.querySelectorAll('input[aria-label]').length,
   });
   // Let content added by earlier checks finish processing (batched after 300 ms), so only
   // reactions to the settings below are counted.
@@ -287,29 +296,53 @@ const privacy = await page.evaluate(async () => {
   D.changes.revertAll = (...args) => { reverts++; return revertAll(...args); };
   const fixerRuns = D.fixers.map((f) => f.run);
   D.fixers.forEach((f, i) => { f.run = (...args) => { runs++; return fixerRuns[i].apply(f, args); }; });
+  const count = () => ({ reverts, runs });
+  const reset = () => { reverts = 0; runs = 0; };
+  const settle = () => new Promise((r) => setTimeout(r, 400));
+
   const before = snapshot();
+  window.__setStore({ privateSites: ['example.ua'] }); // unrelated to this page
+  await settle();
+  const unrelated = { ...count(), snap: snapshot() };
+  reset();
   window.__setStore({ ai: true });
-  window.__setStore({ privateSites: ['example.ua'] });
-  await new Promise((r) => setTimeout(r, 400));
-  const afterSet = snapshot();
+  await settle();
+  const aiOn = { ...count(), snap: snapshot() };
+  window.scrollTo(0, document.body.scrollHeight); // bring every flagged image near the viewport
+  await settle();
+  window.scrollTo(0, 0);
+  const describes = () => window.__sent.filter((m) => m?.type === 'dostupno:describe').length;
+  const sentWithAiOn = describes();
+  reset();
   window.__setStore({ ai: false, privateSites: [] });
+  await settle();
+  const aiOff = { ...count(), snap: snapshot() };
+
   D.changes.revertAll = revertAll;
   D.fixers.forEach((f, i) => { f.run = fixerRuns[i]; });
   return {
     loaded: typeof D.privacy?.mayShareFrom === 'function',
     sharesHere: D.privacy?.mayShareFrom(location.href, { ai: true, privateSites: [] }),
     before,
-    afterSet,
-    reverts,
-    runs,
+    unrelated,
+    aiOn,
+    aiOff,
+    sentWithAiOn,
+    sentTotal: describes(),
   };
 });
 check('privacy gate loads with the content scripts', privacy.loaded);
 check('privacy gate never shares from the file: fixture', privacy.sharesHere === false, privacy.sharesHere);
-check('AI opt-in and site exclusion neither revert nor re-run fixers',
-  privacy.reverts === 0 && privacy.runs === 0, `reverts ${privacy.reverts}, fixer runs ${privacy.runs}`);
-check('AI opt-in and site exclusion leave the fixes untouched',
-  JSON.stringify(privacy.before) === JSON.stringify(privacy.afterSet), JSON.stringify(privacy));
+check('excluding an unrelated site neither reverts nor re-runs fixers',
+  privacy.unrelated.reverts === 0 && privacy.unrelated.runs === 0, JSON.stringify(privacy.unrelated));
+check('turning AI on re-applies the page', privacy.aiOn.reverts === 1 && privacy.aiOn.runs > 0, JSON.stringify(privacy.aiOn));
+check('turning AI off re-applies the page', privacy.aiOff.reverts === 1 && privacy.aiOff.runs > 0, JSON.stringify(privacy.aiOff));
+check('AI on, file: page: nothing is sent and flagged images stay flagged with no AI alt',
+  privacy.sentWithAiOn === 0 && privacy.sentTotal === 0 && privacy.aiOn.snap.needsAi === privacy.before.needsAi &&
+  !privacy.aiOn.snap.alts.includes('ШІ:'), JSON.stringify({ sent: privacy.sentTotal, before: privacy.before, aiOn: privacy.aiOn.snap }));
+check('re-applying gives the same fixes on a page that may not send',
+  JSON.stringify(privacy.before) === JSON.stringify(privacy.aiOn.snap) &&
+  JSON.stringify(privacy.before) === JSON.stringify(privacy.aiOff.snap), JSON.stringify(privacy));
 
 // Turning the site off must revert everything.
 const after = await page.evaluate(() => {

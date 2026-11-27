@@ -1,0 +1,18 @@
+# Доступно backend (Cloudflare Worker). Local only for now: `npm run dev`.
+# Change 3 (rate limiting + deploy) creates the real D1 database and sets its id.
+name = "dostupno-api"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+MODEL = "claude-haiku-5-5"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dostupno-descriptions"
+database_id = "00000000-0000-0000-0000-000000000000" # placeholder: local dev only
+migrations_dir = "migrations"
+
+# Secrets (never in this file): ANTHROPIC_API_KEY
+#   local:      backend/.dev.vars (git-ignored)
+#   production: npx wrangler secret put ANTHROPIC_API_KEY

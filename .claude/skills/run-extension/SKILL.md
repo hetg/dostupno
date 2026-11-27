@@ -17,6 +17,17 @@ accessibility tree); turning the site off reverts live and is announced; the pop
 Ukrainian with named controls. To check something new in the real extension, add a check to
 `test/e2e-extension.mjs` rather than writing a throwaway script.
 
+## AI descriptions against the local backend
+```bash
+npm run db:local --prefix backend     # once: local D1 table
+npm run dev --prefix backend          # http://localhost:8787, key from backend/.dev.vars
+```
+Load `extension/` unpacked, open its service worker console and run
+`chrome.storage.local.set({ devBackendUrl: 'http://localhost:8787' })` (only unpacked installs honor
+it). The popup then shows "Описи зображень"; tick it and open a public news page. Every image
+described is a real, paid model call (fractions of a cent): ask the user before doing this. The e2e
+test covers the same flow against `test/mock-backend.mjs` for free.
+
 ## What it does on a real website
 ```bash
 SHOTS=1 npm run audit -- https://site.ua/                 # every change, before/after pictures

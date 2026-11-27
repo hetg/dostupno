@@ -265,6 +265,101 @@ test('Chrome background: the service worker imports the gate once', () => {
   assert.equal(bg.Dostupno.privacy.mayShareFrom('https://privatbank.ua/', ON), false);
 });
 
+// The background is the authoritative gate (sender.url can't be faked by page scripts).
+// Load the real background scripts with a fake chrome and fetch, and check what leaves.
+const ON_SETTINGS = { ai: true, profiles: { screenreader: true, lowvision: false }, privateSites: [], disabledSites: [] };
+const SENDER = { id: 'ext', tab: { id: 1 }, frameId: 0, url: 'https://news.site.ua/novyny/1?token=SECRET' };
+const loadRelay = ({ settings = ON_SETTINGS, installType = 'development', firefox = false, consent = true } = {}) => {
+  const listeners = [];
+  const fetches = [];
+  const listener = { addListener: () => {} };
+  const chrome = {
+    runtime: {
+      id: 'ext',
+      onInstalled: listener,
+      onMessage: { addListener: (fn) => listeners.push(fn) },
+      ...(firefox ? { getBrowserInfo: () => Promise.resolve({ name: 'Firefox' }) } : {}),
+    },
+    commands: { onCommand: listener },
+    storage: {
+      sync: { get: async (d) => ({ ...d, ...settings }) },
+      local: { get: async (d) => ({ ...d, devBackendUrl: 'http://backend.test' }) },
+    },
+    management: { getSelf: async () => ({ installType }) },
+    permissions: { contains: async () => consent },
+  };
+  const fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    fetches.push({ url, body });
+    return new Response(JSON.stringify({ results: body.items.map(() => ({ alt: 'Опис', decorative: false })) }));
+  };
+  const bg = backgroundContext({ chrome, fetch, setTimeout, clearTimeout, AbortController, Response });
+  for (const file of manifest.background.scripts) runIn(bg, file);
+  const send = (msg, sender = SENDER) => new Promise((resolve) => {
+    let answered = false;
+    const reply = (r) => { answered = true; resolve(r); };
+    for (const fn of listeners) fn(msg, sender, reply);
+    setTimeout(() => { if (!answered) resolve(undefined); }, 500);
+  });
+  return { send, fetches };
+};
+const describeMsg = (items) => ({ type: 'dostupno:describe', items });
+const IMG = { imageUrl: 'https://cdn.site.ua/a.jpg', context: 'Новини громади' };
+
+test('background relay: sends only page host, lang and items to the backend', async () => {
+  const { send, fetches } = loadRelay();
+  const r = await send(describeMsg([IMG]));
+  assert.deepEqual(JSON.parse(JSON.stringify(r.results)), [{ alt: 'Опис', decorative: false }]); // objects from the vm realm
+  assert.equal(fetches.length, 1);
+  assert.equal(fetches[0].url, 'http://backend.test/v1/describe');
+  assert.deepEqual(Object.keys(fetches[0].body).sort(), ['items', 'lang', 'pageHost']);
+  assert.equal(fetches[0].body.pageHost, 'news.site.ua');
+  assert.ok(!JSON.stringify(fetches[0].body).includes('SECRET'), 'never the page URL or its query');
+  assert.deepEqual(fetches[0].body.items, [IMG]);
+});
+
+test('background relay: refuses by its own checks, whatever the page sent', async () => {
+  const cases = [
+    ['page on a bank (browser-reported URL)', {}, { ...SENDER, url: 'https://monobank.ua/' }],
+    ['a subframe', {}, { ...SENDER, frameId: 1 }],
+    ['another extension', {}, { ...SENDER, id: 'evil' }],
+    ['no tab (not a page)', {}, { id: 'ext', frameId: 0, url: SENDER.url }],
+    ['AI off', { settings: { ...ON_SETTINGS, ai: false } }, SENDER],
+    ['screen reader profile off', { settings: { ...ON_SETTINGS, profiles: { screenreader: false } } }, SENDER],
+    ['site excluded', { settings: { ...ON_SETTINGS, privateSites: ['site.ua'] } }, SENDER],
+    ['Доступно off on the site', { settings: { ...ON_SETTINGS, disabledSites: ['news.site.ua'] } }, SENDER],
+    ['Firefox without data-collection consent', { firefox: true, consent: false }, SENDER],
+    ['release build (no backend address)', { installType: 'normal' }, SENDER],
+  ];
+  for (const [name, opts, sender] of cases) {
+    const { send, fetches } = loadRelay(opts);
+    const r = await send(describeMsg([IMG]), sender);
+    assert.equal(fetches.length, 0, name);
+    assert.ok(r === undefined || r.results.every((x) => x.alt === null), name);
+  }
+});
+
+test('background relay: filters items and trims context', async () => {
+  const { send, fetches } = loadRelay({ firefox: true, consent: true });
+  const r = await send(describeMsg([
+    { imageUrl: 'https://b.s3.amazonaws.com/a.jpg?X-Amz-Signature=x', context: '' },
+    { imageUrl: 'https://cdn.site.ua/' + 'a'.repeat(2100) + '.jpg', context: '' },
+    { imageUrl: 'https://cdn.site.ua/ok.jpg', context: 'я'.repeat(500) },
+  ]));
+  assert.equal(fetches.length, 1);
+  assert.deepEqual(fetches[0].body.items.map((i) => i.imageUrl), ['https://cdn.site.ua/ok.jpg']);
+  assert.equal(fetches[0].body.items[0].context.length, 300);
+  assert.deepEqual([...r.results.map((x) => x.alt)], [null, null, 'Опис']);
+});
+
+test('background relay: repeats come from memory, not the backend', async () => {
+  const { send, fetches } = loadRelay();
+  await send(describeMsg([IMG]));
+  const r = await send(describeMsg([IMG]));
+  assert.equal(fetches.length, 1);
+  assert.equal(r.results[0].alt, 'Опис');
+});
+
 test('pages with secret fields look private (Chromium)', async () => {
   const browser = await chromium.launch();
   try {
@@ -280,7 +375,18 @@ test('pages with secret fields look private (Chromium)', async () => {
     assert.equal(await looksPrivate('<input autocomplete="billing cc-number">'), true, 'card number');
     assert.equal(await looksPrivate('<input autocomplete="one-time-code">'), true, 'one-time code');
     assert.equal(await looksPrivate('<input autocomplete="new-password" type="text">'), true, 'new password');
-    assert.equal(await looksPrivate('<div hidden><input type="password"></div>'), true, 'hidden fields count too');
+    // Only fields that are rendered right now count: a closed login dialog on a news homepage
+    // doesn't make the page private (pravda.com.ua, nv.ua), an open one does.
+    assert.equal(await looksPrivate('<div hidden><input type="password"></div>'), false, 'field inside [hidden]');
+    assert.equal(await looksPrivate('<div style="display:none"><form><input type="password"></form></div>'), false, 'closed dialog (display:none)');
+    assert.equal(await looksPrivate('<dialog><input type="password"></dialog>'), false, 'closed <dialog>');
+    assert.equal(await looksPrivate('<input type="password" style="visibility:hidden">'), false, 'visibility:hidden');
+    assert.equal(await looksPrivate('<dialog open><input type="password"></dialog>'), true, 'open <dialog>');
+    assert.equal(await looksPrivate('<input type="password" style="position:absolute;left:-9999px">'), true, 'off-screen still counts');
+    assert.equal(await looksPrivate('<input type="password" style="opacity:0">'), true, 'transparent still counts');
+    assert.equal(await looksPrivate(`<div id="m" style="display:none"><input type="password"></div><script>
+        document.getElementById('m').style.display = 'block'; // the user opened the login dialog
+      </script>`), true, 'dialog opened later');
     assert.equal(await looksPrivate('<iframe src="https://www.liqpay.ua/checkout/123"></iframe>'), true, 'payment widget');
     assert.equal(await looksPrivate('<iframe src="https://js.stripe.com/v3/elements-inner-card.html"></iframe>'), true,
       'Stripe card iframe on a shop checkout');

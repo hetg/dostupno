@@ -42,10 +42,17 @@ extension/
   src/background.js      Keyboard shortcut (Alt+Shift+D) toggles the current site; opens welcome page on install;
                          sets each tab's toolbar icon + tooltip from the pages' reports (the browser resets
                          them to the default on navigation, which covers pages where Доступно can't run).
-  popup/                 Popup + welcome page (same file, ?welcome=1).
+                         AI relay (`dostupno:describe`): re-checks the privacy gate with `sender.url`, sends
+                         only page host + image URLs + short context to the backend. `BACKEND_URL` is empty
+                         until the backend is deployed (change 3), so AI is hidden in release builds.
+  popup/                 Popup + welcome page (same file, ?welcome=1). AI opt-in + per-site "don't send"
+                         controls appear only when a backend address is configured.
   icons/                 icon.svg (on) and icon-off.svg (off on this site: grey, crossed out) + PNGs
                          rendered by `npm run icons`.
-backend/                 Not built yet. See backend/README.md for the planned API.
+backend/                 Cloudflare Worker: POST /v1/describe (AI alt text, Claude Haiku 5.5), D1 cache, the
+                         same privacy.js as the extension. Own package.json; local only (`wrangler dev`) until
+                         change 3 adds rate limiting and deploys it. See backend/README.md.
+test/mock-backend.mjs    Stand-in for /v1/describe in e2e (records exactly what left the browser).
 test/fixtures/           Pages with known accessibility problems.
 test/run-fixers.mjs      Smoke test: injects content scripts into the fixture; names checked via
                          Chromium's accessibility tree (what screen readers get).
@@ -91,17 +98,25 @@ Any code that sends data to a server MUST pass the privacy gate right before eac
 in the page, `mayShareFrom(sender.url, settings)` again in the background (the browser-reported URL, which
 a page can't fake), and `mayShareUrl(url, settings)` for every item URL. About the page itself send only
 `pageHost(url)`, never the full page URL (reset tokens, invite codes, search terms). The gate fails closed; never bypass or
-cache its answer across pages. Behavior: `openspec/specs/data-sharing/` (after archive).
+cache its answer across pages. Behavior: `openspec/specs/data-sharing/spec.md`.
 
 ### Elements that need AI
 Fixers mark what they can't solve with `data-dostupno-needs-ai="alt" | "name" | "label"`.
-The backend (weekend 2) will fill these in. `revertAll()` removes these markers too.
+`revertAll()` removes these markers too. `alt` is filled by the `ai-images` fixer when the user opted
+in; `name` and `label` are for a later change.
 
-## Current fixers (weekend 1, no AI)
+## Current fixers
 Profile in brackets: `all` always runs; `screenreader` and `lowvision` follow the popup choices
 "Я користуюсь скрінрідером" (on by default) and "Я погано бачу".
 - `lang` (all): sets `<html lang>` when missing (detects uk/ru/en by unique letters).
 - `images` (screenreader): decorative images → `alt=""`; figcaption/title → alt; filenames as alt get flagged for AI.
+- `ai-images` (screenreader): only with AI descriptions on (`ai`) and the privacy gate allowing it, flagged images
+  near the viewport are batched (≤ 8) to the background and get `alt="ШІ: …"` (or `alt=""` if decorative).
+  Never overwrites an alt the site set meanwhile; failures leave the image flagged; if the site swaps
+  the picture, the description is withdrawn. Skips tiny images, header/nav images, avatars and
+  ARIA-named images. Context: ≤ 300 chars of visible nearby text, never noscript/hidden/form text,
+  e-mails, phones or URLs. Fixers get `ctx.settings`; changing `ai`, or `privateSites` for this page,
+  re-applies the page (only with the screen reader profile on).
 - `names` (screenreader): icon-only buttons/links get Ukrainian names from title, symbols, a text link to the same
   URL (card headline), href domain, icon class names. "close-search" → "Закрити пошук", not "Пошук".
 - `forms` (screenreader): unlabeled fields get aria-label from placeholder (unless it's an example like
@@ -117,13 +132,23 @@ Profile in brackets: `all` always runs; `screenreader` and `lowvision` follow th
 
 ## Commands
 - `npm ci` then `npx playwright install chromium` (first time; the SessionStart hook does this)
-- `npm run check`: everything CI runs (lint, smoke test, privacy gate, e2e, OpenSpec validation). Run before a PR.
+- `npm ci --prefix backend` (first time): backend dependencies (Anthropic SDK, wrangler)
+- `npm run check`: everything CI runs (lint, smoke test, privacy gate, backend, e2e, OpenSpec validation). Run before a PR.
 - `npm test`: smoke test against `test/fixtures/broken.html`
 - `npm run test:privacy`: privacy gate rules (node) and the secret-field page check (Chromium)
-- `npm run test:e2e`: real unpacked extension in Chromium (`SHOTS=1` saves a popup screenshot)
+- `npm run test:backend`: backend unit tests (no network, no API key)
+- `npm run test:e2e`: real unpacked extension in Chromium (`SHOTS=1` saves a popup screenshot); AI checks run
+  against `test/mock-backend.mjs` on `news.example.ua` (mapped to 127.0.0.1)
+- Backend locally: key in `backend/.dev.vars` (git-ignored), `npm run db:local --prefix backend` once, then
+  `npm run dev --prefix backend` (http://localhost:8787). Point an unpacked extension at it from its service
+  worker console: `chrome.storage.local.set({ devBackendUrl: 'http://localhost:8787' })` (honored only for
+  unpacked installs). Real model calls cost money: ask the user first.
+- `node backend/scripts/eval-alt.mjs`: quality check of AI alt text on real sites (dry run; `--yes` calls the
+  API, about $0.01 for 50 images, only with the user's approval) → `test/audit-report/alt-eval.md`
 - `npm run lint`: ESLint (incl. the reversibility rule for fixers) + `web-ext lint`.
   Expected web-ext warnings: Firefox ignores `background.service_worker` (it uses `scripts`), and
   `data_collection_permissions` is newer than `strict_min_version` 121 (older Firefox ignores it).
+  Optional data collection (`websiteContent`, `browsingActivity`) is requested when the user opts in to AI.
 - `npm run audit`: run all fixers on the real sites in `test/sites.txt`; writes
   `test/audit-report/<host>.json` (every change with context) and `summary.md`.
   `npm run audit -- https://site.ua/` for specific URLs; `SHOTS=1` adds before/after

@@ -3,13 +3,15 @@
  * Weekend 1 handles only what we can decide without AI:
  *  - decorative images (tiny, spacers, inside a link that already has text) -> alt=""
  *  - images with a <figcaption> or title -> use that text
- * Everything else is marked data-dostupno-needs-ai="alt" for the backend (weekend 2).
+ * Everything else is marked data-dostupno-needs-ai="alt"; the ai-images fixer describes those
+ * when the user opted in to AI descriptions.
  */
 (() => {
   const D = window.Dostupno;
 
   const looksLikeFilename = (alt) =>
     /\.(jpe?g|png|gif|webp|svg|avif)$/i.test(alt) || /^(img|image|photo|dsc|фото)[\s_-]?\d*$/i.test(alt);
+  D.looksLikeFilename = looksLikeFilename; // shared with the ai-images fixer
 
   D.registerFixer({
     id: 'images',
